@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Data Concierge</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; background: #f7f7fb; }
+      h1 { margin-bottom: 0.25rem; }
+      .panel { background: white; border-radius: 8px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-top: 1rem; }
+      label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+      textarea, select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #d0d0e0; box-sizing: border-box; }
+      button { background: #4338ca; color: white; border: none; padding: 0.6rem 1.4rem; border-radius: 6px; cursor: pointer; margin-top: 0.5rem; }
+      button:disabled { background: #b7b4e7; cursor: not-allowed; }
+      pre { white-space: pre-wrap; word-wrap: break-word; }
+      table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+      th, td { border: 1px solid #e5e7eb; padding: 0.4rem 0.6rem; text-align: left; }
+      th { background: #f3f4f6; }
+      .data-frame { margin-top: 0.75rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Data concierge</h1>
+    <p>Run read-only SQL slices and see how Gemini reasons over the results.</p>
+
+    <div class="panel">
+      <label for="query">User query</label>
+      <textarea id="query" rows="3" placeholder="e.g., Give me a recap of onboarding progress"></textarea>
+
+      <label for="task">Task type</label>
+      <select id="task">
+        <option value="recap">Low-stakes recap (Gemini 2.5 Flash)</option>
+        <option value="planning">Planning/optimization (Gemini 1.5 Pro)</option>
+      </select>
+
+      <button id="run">Run concierge</button>
+      <div id="status"></div>
+    </div>
+
+    <div class="panel" id="output" style="display:none;">
+      <h2>Show your work</h2>
+      <p><strong>Model:</strong> <span id="model"></span></p>
+      <p><strong>Summary / Recommendation:</strong></p>
+      <pre id="summary"></pre>
+      <p><strong>Prompt sent to the model:</strong></p>
+      <pre id="prompt"></pre>
+      <div id="frames"></div>
+    </div>
+
+    <script>
+      const button = document.getElementById('run');
+      const status = document.getElementById('status');
+      const output = document.getElementById('output');
+      const modelEl = document.getElementById('model');
+      const summaryEl = document.getElementById('summary');
+      const promptEl = document.getElementById('prompt');
+      const framesEl = document.getElementById('frames');
+
+      async function runConcierge() {
+        const user_query = document.getElementById('query').value;
+        const task_type = document.getElementById('task').value;
+        status.textContent = 'Running templates and calling Gemini...';
+        button.disabled = true;
+
+        try {
+          const response = await fetch('/api/data-concierge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_query, task_type })
+          });
+
+          if (!response.ok) {
+            throw new Error('Request failed');
+          }
+
+          const payload = await response.json();
+          modelEl.textContent = payload.model_used;
+          summaryEl.textContent = payload.summary;
+          promptEl.textContent = payload.prompt;
+
+          framesEl.innerHTML = '';
+          Object.entries(payload.data_frames).forEach(([name, rows]) => {
+            const container = document.createElement('div');
+            container.className = 'data-frame';
+            const heading = document.createElement('h3');
+            heading.textContent = `${name} (${rows.length} rows)`;
+            container.appendChild(heading);
+
+            if (rows.length === 0) {
+              const empty = document.createElement('p');
+              empty.textContent = 'No matching rows';
+              container.appendChild(empty);
+            } else {
+              const table = document.createElement('table');
+              const thead = document.createElement('thead');
+              const headerRow = document.createElement('tr');
+              Object.keys(rows[0]).forEach(key => {
+                const th = document.createElement('th');
+                th.textContent = key;
+                headerRow.appendChild(th);
+              });
+              thead.appendChild(headerRow);
+              table.appendChild(thead);
+
+              const tbody = document.createElement('tbody');
+              rows.forEach(row => {
+                const tr = document.createElement('tr');
+                Object.values(row).forEach(value => {
+                  const td = document.createElement('td');
+                  td.textContent = value;
+                  tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+              });
+              table.appendChild(tbody);
+              container.appendChild(table);
+            }
+
+            framesEl.appendChild(container);
+          });
+
+          output.style.display = 'block';
+          status.textContent = 'Complete';
+        } catch (err) {
+          status.textContent = 'Error: ' + err.message;
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      button.addEventListener('click', runConcierge);
+    </script>
+  </body>
+</html>
