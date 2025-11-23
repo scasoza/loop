@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Create experiment</h2>
+  <form method="post">
+    <label for="title">Experiment name</label>
+    <input id="title" name="title" required />
+
+    <label for="goal_id">Primary goal</label>
+    <select id="goal_id" name="goal_id">
+      <option value="">Not linked</option>
+      {% for goal in goal_options %}
+        <option value="{{ goal.id }}">{{ goal.title }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="hypothesis">Approach / hypothesis</label>
+    <textarea id="hypothesis" name="hypothesis" placeholder="No caffeine after 2pm; expect better sleep"></textarea>
+
+    <button type="submit">Save experiment</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Experiments</h3>
+  {% if experiments %}
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Goal</th><th>Hypothesis</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+      {% for exp in experiments %}
+      <tr>
+        <td>{{ exp.title }}</td>
+        <td>{{ exp.goal_id or '—' }}</td>
+        <td>{{ exp.hypothesis }}</td>
+        <td>{{ exp.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No experiments yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

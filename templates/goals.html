@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Create optimization goal</h2>
+  <form method="post">
+    <label for="title">Title</label>
+    <input id="title" name="title" required />
+
+    <label for="metrics">Metrics to track</label>
+    <textarea id="metrics" name="metrics" placeholder="Sleep quality, HRV, time in bed"></textarea>
+
+    <label for="targets">Target ranges</label>
+    <textarea id="targets" name="targets" placeholder="Sleep 7-8 hours, HRV +10% vs baseline"></textarea>
+
+    <label for="description">Notes</label>
+    <textarea id="description" name="description" placeholder="Why this goal matters"></textarea>
+
+    <button type="submit">Save goal</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Existing goals</h3>
+  {% if goals %}
+  <table>
+    <thead>
+      <tr><th>Title</th><th>Metrics</th><th>Targets</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+      {% for goal in goals %}
+      <tr>
+        <td>{{ goal.title }}</td>
+        <td>{{ goal.metrics }}</td>
+        <td>{{ goal.targets }}</td>
+        <td>{{ goal.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No goals yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
