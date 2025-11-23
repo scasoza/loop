@@ -1,0 +1,23 @@
+{
+  "framework": "nextjs",
+  "env": {
+    "DATABASE_URL": "@database_url"
+  },
+  "redirects": [],
+  "headers": [
+    {
+      "source": "/public/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
+  "functions": {
+    "api/**": {
+      "runtime": "nodejs18.x"
+    }
+  }
+}
