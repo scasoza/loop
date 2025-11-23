@@ -1,0 +1,12 @@
+node_modules
+.next
+.env
+.env.*
+.prisma
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+.DS_Store
+.vercel
+coverage
