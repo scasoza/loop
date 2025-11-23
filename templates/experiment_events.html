@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Log experiment event</h2>
+  <form method="post">
+    <label for="experiment_id">Experiment</label>
+    <select id="experiment_id" name="experiment_id">
+      <option value="">Unassigned</option>
+      {% for experiment in experiment_options %}
+        <option value="{{ experiment.id }}">{{ experiment.title }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="event_type">Event type</label>
+    <input id="event_type" name="event_type" placeholder="Started, completed, adjustment" />
+
+    <label for="note">Notes</label>
+    <textarea id="note" name="note" placeholder="Skipped caffeine, slept 7.5 hours"></textarea>
+
+    <button type="submit">Save event</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Recent events</h3>
+  {% if events %}
+  <table>
+    <thead>
+      <tr><th>When (UTC)</th><th>Experiment</th><th>Type</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      {% for event in events|reverse %}
+      <tr>
+        <td>{{ event.timestamp }}</td>
+        <td>{{ event.experiment_id or '—' }}</td>
+        <td>{{ event.event_type }}</td>
+        <td>{{ event.note }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No experiment events yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
