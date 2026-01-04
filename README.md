@@ -60,7 +60,7 @@ create index on habits(session_id);
 create index on habit_entries(session_id);
 ```
 
-3. Copy `.env.example` to `.env.local` and add your Supabase details:
+3. Copy `.env.example` to `.env.local` and add your Supabase details (optional if you only deploy on Vercel):
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
@@ -82,9 +82,18 @@ Open http://localhost:3000 to view the app.
 - If you want to start fresh, use the in-app “Hard reset” button to delete the current session’s rows.
 
 ## Deploying to Vercel
-- Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as project environment variables
+- Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as project environment variables in your Vercel project (no local `.env` file is required). In the Vercel dashboard, go to **Settings → Environment Variables** and add the two keys using the values from **Supabase → Project Settings → API**.
 - Deploy normally with the Vercel dashboard or `vercel --prod`
 - The UI uses client-side Supabase calls and requires no extra serverless functions
+
+### Vercel-only setup (no local dev)
+If you already created the Supabase project and only plan to run on Vercel:
+
+1. Open your Vercel project’s **Settings → Environment Variables** and add:
+   - `NEXT_PUBLIC_SUPABASE_URL` = your Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your Supabase anon key
+2. Trigger a deploy (either via the dashboard or `vercel --prod`).
+3. The app will connect directly to your Supabase backend in production with no local configuration needed.
 
 ## Notes
 - If Supabase env vars are missing, the app falls back to demo data so the UI still works.
