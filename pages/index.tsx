@@ -12,8 +12,12 @@ export default function Home() {
   const [summary, setSummary] = useState<Summary>({
     habitCount: 0,
     totalReps: 0,
-    commitmentScore: 0,
-    totalCommitments: 0
+    floorComplete: 0,
+    floorTotal: 0,
+    baseComplete: 0,
+    baseTotal: 0,
+    bonusComplete: 0,
+    bonusTotal: 0
   });
 
   const content = useMemo(() => {
