@@ -9,7 +9,12 @@ import { Summary } from '../lib/data';
 export default function Home() {
   const [tab, setTab] = useState<TabKey>('protocol');
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
-  const [summary, setSummary] = useState<Summary>({ habitCount: 2, totalReps: 2 });
+  const [summary, setSummary] = useState<Summary>({
+    habitCount: 0,
+    totalReps: 0,
+    commitmentScore: 0,
+    totalCommitments: 0
+  });
 
   const content = useMemo(() => {
     switch (tab) {
