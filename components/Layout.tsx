@@ -1,12 +1,13 @@
-import { ReactNode, useState } from 'react';
-import { Bars3BottomLeftIcon } from '@heroicons/react/24/outline';
+import { ReactNode, useState, useRef, useEffect } from 'react';
+import { Bars3BottomLeftIcon, XMarkIcon, Cog6ToothIcon, CalendarIcon, SparklesIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 import classNames from 'classnames';
+import dayjs from 'dayjs';
 
 const tabs = [
-  { id: 'protocol', label: 'Protocol' },
-  { id: 'calendar', label: 'Calendar' },
-  { id: 'system', label: 'System' },
-  { id: 'coach', label: 'Coach' }
+  { id: 'protocol', label: 'Protocol', icon: ClipboardDocumentListIcon },
+  { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
+  { id: 'system', label: 'System', icon: Cog6ToothIcon },
+  { id: 'coach', label: 'Coach', icon: SparklesIcon }
 ] as const;
 
 export type TabKey = (typeof tabs)[number]['id'];
@@ -18,6 +19,30 @@ interface Props {
 }
 
 export function Layout({ children, onTabChange, currentTab }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [menuOpen]);
+
+  const handleNavClick = (tabId: TabKey) => {
+    onTabChange?.(tabId);
+    setMenuOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-midnight text-white flex flex-col max-w-xl mx-auto">
       <header className="flex items-center justify-between px-4 pt-6 pb-4">
@@ -25,26 +50,77 @@ export function Layout({ children, onTabChange, currentTab }: Props) {
           <div className="h-10 w-10 rounded-full bg-accent text-black grid place-items-center font-semibold">Y</div>
           <div>
             <p className="text-xs text-gray-400">Your Rhythm</p>
-            <p className="text-sm font-semibold">Sun, Jan 4</p>
+            <p className="text-sm font-semibold">{dayjs().format('ddd, MMM D')}</p>
           </div>
         </div>
-        <Bars3BottomLeftIcon className="h-6 w-6 text-gray-300" />
-      </header>
-      <main className="flex-1 px-4 pb-20">{children}</main>
-      <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
-        <div className="glow-card flex items-center justify-between px-4 py-3">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => onTabChange?.(tab.id)}
-              className={classNames('flex-1 text-center text-sm font-semibold transition py-2 rounded-full', {
-                'bg-accent text-black': currentTab === tab.id,
-                'text-gray-300 hover:text-white': currentTab !== tab.id
+
+        {/* Menu Button & Dropdown */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="h-10 w-10 rounded-full bg-panel grid place-items-center hover:bg-panel/80 transition"
+            aria-label="Menu"
+          >
+            {menuOpen ? (
+              <XMarkIcon className="h-6 w-6 text-gray-300" />
+            ) : (
+              <Bars3BottomLeftIcon className="h-6 w-6 text-gray-300" />
+            )}
+          </button>
+
+          {/* Dropdown Menu */}
+          {menuOpen && (
+            <div className="absolute right-0 top-12 w-48 bg-surface border border-gray-700 rounded-xl shadow-lg overflow-hidden z-50">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleNavClick(tab.id)}
+                    className={classNames(
+                      'w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition',
+                      {
+                        'bg-accent/20 text-accent': currentTab === tab.id,
+                        'text-gray-300 hover:bg-panel hover:text-white': currentTab !== tab.id
+                      }
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {tab.label}
+                  </button>
+                );
               })}
-            >
-              {tab.label}
-            </button>
-          ))}
+              <div className="border-t border-gray-700">
+                <div className="px-4 py-2 text-xs text-gray-500">
+                  Your Rhythm v1.0
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <main className="flex-1 px-4 pb-20">{children}</main>
+
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
+        <div className="glow-card flex items-center justify-between px-2 py-2">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onTabChange?.(tab.id)}
+                className={classNames('flex-1 flex flex-col items-center gap-1 py-2 rounded-xl transition', {
+                  'bg-accent text-black': currentTab === tab.id,
+                  'text-gray-400 hover:text-white': currentTab !== tab.id
+                })}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-xs font-medium">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>

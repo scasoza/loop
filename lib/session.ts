@@ -2,9 +2,9 @@ import { nanoid } from 'nanoid';
 
 const STORAGE_KEY = 'your-rhythm-session-id';
 
-type Storage = Pick<Storage, 'getItem' | 'setItem'>;
+type StorageInterface = Pick<globalThis.Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-function getStorage(): Storage | null {
+function getStorage(): StorageInterface | null {
   if (typeof window === 'undefined') return null;
   return window.localStorage;
 }
