@@ -6,6 +6,8 @@ A Next.js (React + TypeScript) implementation of the Your Rhythm habit/protocol 
 - Protocol overview with streak, progress bar, and day completion summary
 - Habit list grouped by tier (base/floor/bonus) with completion toggles
 - Add new habits with Supabase-backed persistence keyed to an anonymous session id
+- Habit history stored per day (so completions persist beyond “today”)
+- Adjustable tracking periods (30/45/60 days) to recommit to a block of habits
 - Calendar and system/rules views plus a placeholder Coach panel
 - Hard reset control that clears Supabase records for the current session
 
@@ -28,6 +30,8 @@ create table protocols (
   total_days int default 30,
   streak int default 1,
   theme text default 'system',
+  start_date date default now(),
+  end_date date default (now() + interval '29 days'),
   created_at timestamptz default now()
 );
 
@@ -37,12 +41,23 @@ create table habits (
   protocol_id uuid references protocols(id) on delete cascade,
   name text not null,
   tier text default 'base',
-  completed boolean default false,
   created_at timestamptz default now()
+);
+
+create table habit_entries (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  protocol_id uuid references protocols(id) on delete cascade,
+  habit_id uuid references habits(id) on delete cascade,
+  entry_date date not null,
+  completed boolean default false,
+  inserted_at timestamptz default now(),
+  unique (session_id, habit_id, entry_date)
 );
 
 create index on protocols(session_id);
 create index on habits(session_id);
+create index on habit_entries(session_id);
 ```
 
 3. Copy `.env.example` to `.env.local` and add your Supabase details:
@@ -59,6 +74,12 @@ npm run dev
 ```
 
 Open http://localhost:3000 to view the app.
+
+### Supabase setup cheatsheet
+- In the [Supabase dashboard](https://supabase.com/), create a new project (free tier works).
+- Visit **Table editor → New query** and paste the SQL above to create tables.
+- Copy the project URL and anon key from **Project Settings → API** and set them in `.env.local` / Vercel env vars.
+- If you want to start fresh, use the in-app “Hard reset” button to delete the current session’s rows.
 
 ## Deploying to Vercel
 - Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as project environment variables
