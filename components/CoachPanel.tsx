@@ -1,70 +1,67 @@
 import { useState, useEffect } from 'react';
 import { SparklesIcon, ArrowPathIcon, ChartBarIcon, LightBulbIcon } from '@heroicons/react/24/solid';
-import { fetchProtocol, fetchHabits, computeSummary, Habit, Summary } from '../lib/data';
+import { fetchProtocol, fetchHabitsWithCompletions, computeSummary, HabitWithCompletion, Summary } from '../lib/data';
 
 interface Insight {
   type: 'strength' | 'focus' | 'tip';
   message: string;
 }
 
-function generateInsights(habits: Habit[], summary: Summary): Insight[] {
+function generateInsights(habits: HabitWithCompletion[], summary: Summary): Insight[] {
   const insights: Insight[] = [];
 
-  const completionRate = summary.habitCount > 0 ? summary.totalReps / summary.habitCount : 0;
-
-  // Floor habit analysis
-  if (summary.floorTotal > 0) {
-    if (summary.floorComplete === summary.floorTotal) {
-      insights.push({
-        type: 'strength',
-        message: 'Floor habits complete. Your foundation is solid.'
-      });
-    } else {
-      insights.push({
-        type: 'focus',
-        message: `${summary.floorTotal - summary.floorComplete} floor habit(s) remaining. These are non-negotiable.`
-      });
-    }
-  }
-
-  // Base habit analysis
-  if (summary.baseTotal > 0) {
-    if (summary.baseComplete === summary.baseTotal) {
-      insights.push({
-        type: 'strength',
-        message: 'Base layer complete. Operating at standard capacity.'
-      });
-    } else if (summary.floorComplete === summary.floorTotal) {
-      insights.push({
-        type: 'tip',
-        message: `${summary.baseTotal - summary.baseComplete} base habit(s) to go. Maintain momentum.`
-      });
-    }
-  }
-
-  // Bonus analysis
-  if (summary.bonusComplete > 0) {
-    insights.push({
-      type: 'strength',
-      message: `${summary.bonusComplete} bonus habit(s) done. Operating above baseline.`
-    });
-  } else if (completionRate >= 1 && summary.bonusTotal > 0) {
+  if (summary.habitCount === 0) {
     insights.push({
       type: 'tip',
-      message: 'Core habits done. Consider bonus habits to push further.'
+      message: 'Add some habits to start tracking your rhythm.'
     });
+    return insights;
   }
 
-  // Overall
+  const completionRate = summary.completedCount / summary.habitCount;
+
+  // Completion analysis
   if (completionRate >= 1) {
     insights.push({
       type: 'strength',
-      message: 'All habits complete. Peak performance today.'
+      message: 'All habits complete. Solid day.'
     });
-  } else if (completionRate < 0.5 && summary.habitCount > 0) {
+  } else if (completionRate >= 0.5) {
+    insights.push({
+      type: 'tip',
+      message: `${summary.habitCount - summary.completedCount} habits remaining. Keep pushing.`
+    });
+  } else if (summary.completedCount > 0) {
     insights.push({
       type: 'focus',
-      message: 'Less than half complete. Prioritize floor habits first.'
+      message: 'Less than half done. Pick one habit to complete next.'
+    });
+  } else {
+    insights.push({
+      type: 'focus',
+      message: 'No habits logged yet today. Start with something easy.'
+    });
+  }
+
+  // Tier analysis
+  if (summary.bonusCount > 0) {
+    insights.push({
+      type: 'strength',
+      message: `${summary.bonusCount} bonus-level performance${summary.bonusCount > 1 ? 's' : ''}. Operating above baseline.`
+    });
+  }
+
+  if (summary.floorCount > 0 && summary.baseCount === 0 && summary.bonusCount === 0) {
+    insights.push({
+      type: 'tip',
+      message: 'All completions at floor level. Consider pushing for base on your next habit.'
+    });
+  }
+
+  if (summary.baseCount > summary.floorCount && summary.baseCount > summary.bonusCount) {
+    insights.push({
+      type: 'strength',
+      message: 'Consistent base-level execution. Solid foundation.'
     });
   }
 
@@ -74,14 +71,14 @@ function generateInsights(habits: Habit[], summary: Summary): Insight[] {
 export function CoachPanel() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habits, setHabits] = useState<HabitWithCompletion[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
 
   const loadData = async () => {
     setAnalyzing(true);
     const proto = await fetchProtocol();
-    const habitsData = await fetchHabits(proto.id);
+    const habitsData = await fetchHabitsWithCompletions(proto.id);
     const summaryData = computeSummary(habitsData);
 
     setHabits(habitsData);
@@ -107,7 +104,7 @@ export function CoachPanel() {
   }
 
   const completionPct = summary.habitCount > 0
-    ? Math.round((summary.totalReps / summary.habitCount) * 100)
+    ? Math.round((summary.completedCount / summary.habitCount) * 100)
     : 0;
 
   return (
@@ -142,24 +139,26 @@ export function CoachPanel() {
 
         <div className="bg-panel rounded-xl p-4 text-center">
           <p className="text-4xl font-bold text-success">{completionPct}%</p>
-          <p className="text-sm text-gray-400">{summary.totalReps}/{summary.habitCount} habits complete</p>
+          <p className="text-sm text-gray-400">{summary.completedCount}/{summary.habitCount} habits complete</p>
         </div>
 
         {/* Tier Breakdown */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-2 text-center">
-            <p className="text-sm font-bold text-blue-400">{summary.floorComplete}/{summary.floorTotal}</p>
-            <p className="text-xs text-gray-400">Floor</p>
+        {summary.completedCount > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-2 text-center">
+              <p className="text-sm font-bold text-blue-400">{summary.floorCount}</p>
+              <p className="text-xs text-gray-400">Floor</p>
+            </div>
+            <div className="bg-indigo-400/10 border border-indigo-400/30 rounded-lg p-2 text-center">
+              <p className="text-sm font-bold text-indigo-400">{summary.baseCount}</p>
+              <p className="text-xs text-gray-400">Base</p>
+            </div>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-center">
+              <p className="text-sm font-bold text-amber-500">{summary.bonusCount}</p>
+              <p className="text-xs text-gray-400">Bonus</p>
+            </div>
           </div>
-          <div className="bg-indigo-400/10 border border-indigo-400/30 rounded-lg p-2 text-center">
-            <p className="text-sm font-bold text-indigo-400">{summary.baseComplete}/{summary.baseTotal}</p>
-            <p className="text-xs text-gray-400">Base</p>
-          </div>
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-center">
-            <p className="text-sm font-bold text-amber-500">{summary.bonusComplete}/{summary.bonusTotal}</p>
-            <p className="text-xs text-gray-400">Bonus</p>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Insights */}
@@ -168,40 +167,34 @@ export function CoachPanel() {
           <LightBulbIcon className="h-5 w-5 text-amber-400" />
           <h4 className="font-semibold">Insights</h4>
         </div>
-        {insights.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4">
-            Add some habits to get personalized insights.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {insights.map((insight, idx) => (
-              <div
-                key={idx}
-                className={`p-3 rounded-xl text-sm ${
-                  insight.type === 'strength'
-                    ? 'bg-success/10 border border-success/30 text-success'
-                    : insight.type === 'focus'
-                    ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
-                    : 'bg-accent/10 border border-accent/30 text-accent'
-                }`}
-              >
-                <span className="font-semibold uppercase text-xs mr-2">
-                  {insight.type === 'strength' ? 'Strength' : insight.type === 'focus' ? 'Focus' : 'Tip'}:
-                </span>
-                {insight.message}
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="space-y-2">
+          {insights.map((insight, idx) => (
+            <div
+              key={idx}
+              className={`p-3 rounded-xl text-sm ${
+                insight.type === 'strength'
+                  ? 'bg-success/10 border border-success/30 text-success'
+                  : insight.type === 'focus'
+                  ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
+                  : 'bg-accent/10 border border-accent/30 text-accent'
+              }`}
+            >
+              <span className="font-semibold uppercase text-xs mr-2">
+                {insight.type === 'strength' ? 'Strength' : insight.type === 'focus' ? 'Focus' : 'Tip'}:
+              </span>
+              {insight.message}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* The Tier System */}
       <div className="glow-card p-5 space-y-3">
-        <h4 className="font-semibold text-gray-300">The Tier System</h4>
+        <h4 className="font-semibold text-gray-300">Understanding Tiers</h4>
         <div className="space-y-2 text-sm text-gray-400">
-          <p><span className="text-blue-400 font-semibold">Floor:</span> Non-negotiables. These happen no matter what.</p>
-          <p><span className="text-indigo-400 font-semibold">Base:</span> Standard operating habits. Your daily baseline.</p>
-          <p><span className="text-amber-500 font-semibold">Bonus:</span> Extra credit. Push beyond when you have capacity.</p>
+          <p><span className="text-blue-400 font-semibold">Floor:</span> You did it, but bare minimum. Still counts.</p>
+          <p><span className="text-indigo-400 font-semibold">Base:</span> Standard execution. Your normal effort.</p>
+          <p><span className="text-amber-500 font-semibold">Bonus:</span> You went above and beyond today.</p>
         </div>
       </div>
     </div>

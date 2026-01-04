@@ -1,9 +1,11 @@
 import { supabase } from './supabaseClient';
 import { getSessionId } from './session';
+import dayjs from 'dayjs';
 
 type ProtocolStatus = 'active' | 'paused' | 'completed';
 
-export type HabitTier = 'floor' | 'base' | 'bonus';
+// Tier describes how you performed the habit that day
+export type CompletionTier = 'floor' | 'base' | 'bonus';
 
 export interface Protocol {
   id: string;
@@ -16,24 +18,33 @@ export interface Protocol {
   created_at?: string;
 }
 
+// Habit is just the definition - what you want to do
 export interface Habit {
   id: string;
   name: string;
-  tier: HabitTier;
-  completed: boolean;
   protocol_id: string;
   created_at?: string;
 }
 
+// Completion records how you did it on a specific day
+export interface HabitCompletion {
+  id: string;
+  habit_id: string;
+  date: string;
+  tier: CompletionTier;
+}
+
+// Combined view for display
+export interface HabitWithCompletion extends Habit {
+  todayCompletion?: HabitCompletion;
+}
+
 export interface Summary {
-  totalReps: number;
   habitCount: number;
-  floorComplete: number;
-  floorTotal: number;
-  baseComplete: number;
-  baseTotal: number;
-  bonusComplete: number;
-  bonusTotal: number;
+  completedCount: number;
+  floorCount: number;
+  baseCount: number;
+  bonusCount: number;
 }
 
 const FALLBACK_PROTOCOL: Protocol = {
@@ -47,23 +58,25 @@ const FALLBACK_PROTOCOL: Protocol = {
 };
 
 const FALLBACK_HABITS: Habit[] = [
-  { id: 'demo-1', name: 'Morning Routine', tier: 'floor', completed: false, protocol_id: 'demo-protocol' },
-  { id: 'demo-2', name: 'Deep Work Block', tier: 'base', completed: false, protocol_id: 'demo-protocol' },
-  { id: 'demo-3', name: 'Exercise', tier: 'base', completed: false, protocol_id: 'demo-protocol' },
-  { id: 'demo-4', name: 'Read 30 mins', tier: 'bonus', completed: false, protocol_id: 'demo-protocol' }
+  { id: 'demo-1', name: 'Morning Routine', protocol_id: 'demo-protocol' },
+  { id: 'demo-2', name: 'Deep Work', protocol_id: 'demo-protocol' },
+  { id: 'demo-3', name: 'Exercise', protocol_id: 'demo-protocol' },
+  { id: 'demo-4', name: 'Read', protocol_id: 'demo-protocol' }
 ];
 
 function hasSupabaseEnv(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  // Check that they're set and not placeholder values
   return Boolean(url && key && !url.includes('your-project') && !key.includes('your-anon'));
+}
+
+function getToday(): string {
+  return dayjs().format('YYYY-MM-DD');
 }
 
 export async function fetchProtocol(): Promise<Protocol> {
   const sessionId = getSessionId();
   if (!hasSupabaseEnv() || !sessionId) {
-    console.log('Using fallback: no Supabase env or session');
     return FALLBACK_PROTOCOL;
   }
 
@@ -82,7 +95,6 @@ export async function fetchProtocol(): Promise<Protocol> {
     }
 
     if (!data) {
-      // Create a new protocol for this session
       const { data: created, error: insertError } = await supabase
         .from('protocols')
         .insert({
@@ -123,17 +135,17 @@ export async function updateProtocol(partial: Partial<Protocol>): Promise<void> 
     .eq('session_id', sessionId);
 }
 
+// Fetch habit definitions
 export async function fetchHabits(protocolId: string): Promise<Habit[]> {
   const sessionId = getSessionId();
   if (!hasSupabaseEnv() || !sessionId) {
-    console.log('Using fallback habits: no Supabase env or session');
     return FALLBACK_HABITS;
   }
 
   try {
     const { data, error } = await supabase
       .from('habits')
-      .select('*')
+      .select('id, name, protocol_id, created_at')
       .eq('session_id', sessionId)
       .eq('protocol_id', protocolId)
       .order('created_at', { ascending: true });
@@ -150,16 +162,117 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
   }
 }
 
-export async function addHabit(input: { name: string; tier: HabitTier; protocolId: string }): Promise<Habit> {
+// Fetch today's completions
+export async function fetchTodayCompletions(habitIds: string[]): Promise<Record<string, HabitCompletion>> {
+  const sessionId = getSessionId();
+  if (!hasSupabaseEnv() || !sessionId || habitIds.length === 0) return {};
+
+  const today = getToday();
+  const { data, error } = await supabase
+    .from('habit_completions')
+    .select('*')
+    .eq('session_id', sessionId)
+    .eq('date', today)
+    .in('habit_id', habitIds);
+
+  if (error) {
+    console.error('Error fetching completions:', error.message);
+    return {};
+  }
+
+  const result: Record<string, HabitCompletion> = {};
+  (data || []).forEach((c: HabitCompletion) => {
+    result[c.habit_id] = c;
+  });
+  return result;
+}
+
+// Get habits with today's completion status
+export async function fetchHabitsWithCompletions(protocolId: string): Promise<HabitWithCompletion[]> {
+  const habits = await fetchHabits(protocolId);
+  const sessionId = getSessionId();
+
+  if (!hasSupabaseEnv() || !sessionId) {
+    // Demo mode
+    return habits.map((h, i) => ({
+      ...h,
+      todayCompletion: i === 0 ? { id: 'demo-c1', habit_id: h.id, date: getToday(), tier: 'base' as CompletionTier } : undefined
+    }));
+  }
+
+  const completions = await fetchTodayCompletions(habits.map(h => h.id));
+  return habits.map(h => ({
+    ...h,
+    todayCompletion: completions[h.id]
+  }));
+}
+
+// Complete a habit for today with a tier
+export async function completeHabit(habitId: string, tier: CompletionTier): Promise<HabitCompletion> {
+  const sessionId = getSessionId();
+  const today = getToday();
+
+  if (!hasSupabaseEnv() || !sessionId) {
+    return { id: `demo-${Date.now()}`, habit_id: habitId, date: today, tier };
+  }
+
+  // Check if completion exists
+  const { data: existing } = await supabase
+    .from('habit_completions')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('habit_id', habitId)
+    .eq('date', today)
+    .maybeSingle();
+
+  if (existing) {
+    // Update tier
+    const { data, error } = await supabase
+      .from('habit_completions')
+      .update({ tier })
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data as HabitCompletion;
+  } else {
+    // Create new
+    const { data, error } = await supabase
+      .from('habit_completions')
+      .insert({
+        session_id: sessionId,
+        habit_id: habitId,
+        date: today,
+        tier
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data as HabitCompletion;
+  }
+}
+
+// Remove today's completion (uncomplete)
+export async function uncompleteHabit(habitId: string): Promise<void> {
+  const sessionId = getSessionId();
+  if (!hasSupabaseEnv() || !sessionId) return;
+
+  const today = getToday();
+  await supabase
+    .from('habit_completions')
+    .delete()
+    .eq('session_id', sessionId)
+    .eq('habit_id', habitId)
+    .eq('date', today);
+}
+
+// Add new habit
+export async function addHabit(input: { name: string; protocolId: string }): Promise<Habit> {
   const sessionId = getSessionId();
   if (!hasSupabaseEnv() || !sessionId) {
-    return {
-      id: `demo-${Date.now()}`,
-      name: input.name,
-      tier: input.tier,
-      completed: false,
-      protocol_id: input.protocolId
-    };
+    return { id: `demo-${Date.now()}`, name: input.name, protocol_id: input.protocolId };
   }
 
   const { data, error } = await supabase
@@ -167,20 +280,17 @@ export async function addHabit(input: { name: string; tier: HabitTier; protocolI
     .insert({
       session_id: sessionId,
       protocol_id: input.protocolId,
-      name: input.name,
-      tier: input.tier,
-      completed: false
+      name: input.name
     })
     .select()
     .single();
 
-  if (error || !data) {
-    throw new Error(error?.message ?? 'Unable to add habit');
-  }
+  if (error || !data) throw new Error(error?.message ?? 'Unable to add habit');
   return data as Habit;
 }
 
-export async function updateHabit(id: string, updates: Partial<Habit>): Promise<void> {
+// Update habit name
+export async function updateHabit(id: string, updates: { name: string }): Promise<void> {
   const sessionId = getSessionId();
   if (!hasSupabaseEnv() || !sessionId) return;
 
@@ -191,17 +301,7 @@ export async function updateHabit(id: string, updates: Partial<Habit>): Promise<
     .eq('session_id', sessionId);
 }
 
-export async function toggleHabit(id: string, completed: boolean): Promise<void> {
-  const sessionId = getSessionId();
-  if (!hasSupabaseEnv() || !sessionId) return;
-
-  await supabase
-    .from('habits')
-    .update({ completed })
-    .eq('id', id)
-    .eq('session_id', sessionId);
-}
-
+// Delete habit
 export async function deleteHabit(id: string): Promise<void> {
   const sessionId = getSessionId();
   if (!hasSupabaseEnv() || !sessionId) return;
@@ -213,27 +313,23 @@ export async function deleteHabit(id: string): Promise<void> {
     .eq('session_id', sessionId);
 }
 
+// Clear all data
 export async function clearData(): Promise<void> {
   const sessionId = getSessionId();
   if (!hasSupabaseEnv() || !sessionId) return;
 
-  // Habits will cascade delete when protocol is deleted
+  await supabase.from('habit_completions').delete().eq('session_id', sessionId);
   await supabase.from('protocols').delete().eq('session_id', sessionId);
 }
 
-export function computeSummary(habits: Habit[]): Summary {
-  const floor = habits.filter(h => h.tier === 'floor');
-  const base = habits.filter(h => h.tier === 'base');
-  const bonus = habits.filter(h => h.tier === 'bonus');
-
+// Compute summary for today
+export function computeSummary(habits: HabitWithCompletion[]): Summary {
+  const completed = habits.filter(h => h.todayCompletion);
   return {
-    totalReps: habits.filter(h => h.completed).length,
     habitCount: habits.length,
-    floorComplete: floor.filter(h => h.completed).length,
-    floorTotal: floor.length,
-    baseComplete: base.filter(h => h.completed).length,
-    baseTotal: base.length,
-    bonusComplete: bonus.filter(h => h.completed).length,
-    bonusTotal: bonus.length
+    completedCount: completed.length,
+    floorCount: completed.filter(h => h.todayCompletion?.tier === 'floor').length,
+    baseCount: completed.filter(h => h.todayCompletion?.tier === 'base').length,
+    bonusCount: completed.filter(h => h.todayCompletion?.tier === 'bonus').length
   };
 }

@@ -28,7 +28,7 @@ export function CalendarPanel({ summary }: Props) {
   const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   const completionRate = summary.habitCount > 0
-    ? Math.round((summary.totalReps / summary.habitCount) * 100)
+    ? Math.round((summary.completedCount / summary.habitCount) * 100)
     : 0;
 
   return (
@@ -74,7 +74,7 @@ export function CalendarPanel({ summary }: Props) {
               <CheckCircleIcon className="h-5 w-5 text-success" />
               <span className="font-medium">Habits Complete</span>
             </div>
-            <span className="text-2xl font-bold">{summary.totalReps}/{summary.habitCount}</span>
+            <span className="text-2xl font-bold">{summary.completedCount}/{summary.habitCount}</span>
           </div>
           <div className="w-full bg-midnight h-2 rounded-full overflow-hidden">
             <div className="bg-success h-full transition-all" style={{ width: `${completionRate}%` }} />
@@ -82,20 +82,22 @@ export function CalendarPanel({ summary }: Props) {
         </div>
 
         {/* Tier Breakdown */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-blue-400">{summary.floorComplete}/{summary.floorTotal}</p>
-            <p className="text-xs text-gray-400">Floor</p>
+        {summary.completedCount > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-3 text-center">
+              <p className="text-lg font-bold text-blue-400">{summary.floorCount}</p>
+              <p className="text-xs text-gray-400">Floor</p>
+            </div>
+            <div className="bg-indigo-400/10 border border-indigo-400/30 rounded-lg p-3 text-center">
+              <p className="text-lg font-bold text-indigo-400">{summary.baseCount}</p>
+              <p className="text-xs text-gray-400">Base</p>
+            </div>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-center">
+              <p className="text-lg font-bold text-amber-500">{summary.bonusCount}</p>
+              <p className="text-xs text-gray-400">Bonus</p>
+            </div>
           </div>
-          <div className="bg-indigo-400/10 border border-indigo-400/30 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-indigo-400">{summary.baseComplete}/{summary.baseTotal}</p>
-            <p className="text-xs text-gray-400">Base</p>
-          </div>
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-amber-500">{summary.bonusComplete}/{summary.bonusTotal}</p>
-            <p className="text-xs text-gray-400">Bonus</p>
-          </div>
-        </div>
+        )}
 
         {/* Day Score */}
         <div className="bg-panel rounded-xl p-4 flex items-center justify-between">

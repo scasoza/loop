@@ -11,13 +11,10 @@ export default function Home() {
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [summary, setSummary] = useState<Summary>({
     habitCount: 0,
-    totalReps: 0,
-    floorComplete: 0,
-    floorTotal: 0,
-    baseComplete: 0,
-    baseTotal: 0,
-    bonusComplete: 0,
-    bonusTotal: 0
+    completedCount: 0,
+    floorCount: 0,
+    baseCount: 0,
+    bonusCount: 0
   });
 
   const content = useMemo(() => {
