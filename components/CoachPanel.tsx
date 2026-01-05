@@ -78,6 +78,13 @@ export function CoachPanel() {
   const loadData = async () => {
     setAnalyzing(true);
     const proto = await fetchProtocol();
+
+    if (!proto) {
+      setLoading(false);
+      setAnalyzing(false);
+      return;
+    }
+
     const habitsData = await fetchHabitsWithCompletions(proto.id);
     const summaryData = computeSummary(habitsData);
 
