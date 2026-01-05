@@ -21,7 +21,6 @@ export interface Habit {
   id: string;
   name: string;
   protocol_id: string;
-  created_at?: string;
 }
 
 export interface HabitCompletion {
@@ -154,10 +153,9 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
 
   const { data, error } = await supabase
     .from('habits')
-    .select('id, name, protocol_id, created_at')
+    .select('id, name, protocol_id')
     .eq('session_id', sessionId)
-    .eq('protocol_id', protocolId)
-    .order('created_at', { ascending: true });
+    .eq('protocol_id', protocolId);
 
   console.log('[Loop Debug] fetchHabits result:', { count: data?.length, habits: data?.map(h => h.name), error: error?.message });
 
