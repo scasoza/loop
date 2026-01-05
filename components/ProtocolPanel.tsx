@@ -15,6 +15,7 @@ import {
   HabitWithCompletion,
   Summary
 } from '../lib/data';
+import { getSessionId } from '../lib/session';
 
 interface Props {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
@@ -37,15 +38,31 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [selectingTierId, setSelectingTierId] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<{
+    sessionId: string | null;
+    protocolId: string | null;
+    habitCount: number;
+    habitNames: string[];
+    timestamp: string;
+  } | null>(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError(null);
 
+      const sessionId = getSessionId();
       const proto = await fetchProtocol();
 
       if (!proto) {
+        setDebugInfo({
+          sessionId,
+          protocolId: null,
+          habitCount: 0,
+          habitNames: [],
+          timestamp: new Date().toISOString()
+        });
         setError('Could not connect to database. Check Supabase configuration.');
         setLoading(false);
         return;
@@ -56,6 +73,16 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
 
       const habitsData = await fetchHabitsWithCompletions(proto.id);
       setHabits(habitsData);
+
+      // Capture debug info
+      setDebugInfo({
+        sessionId,
+        protocolId: proto.id,
+        habitCount: habitsData.length,
+        habitNames: habitsData.map(h => h.name),
+        timestamp: new Date().toISOString()
+      });
+
       setLoading(false);
     };
     load();
@@ -343,6 +370,27 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Debug Panel - tap to toggle */}
+      <button
+        onClick={() => setShowDebug(!showDebug)}
+        className="w-full text-center text-xs text-gray-600 py-2"
+      >
+        {showDebug ? 'Hide Debug Info' : 'Show Debug Info'}
+      </button>
+
+      {showDebug && debugInfo && (
+        <div className="glow-card p-4 space-y-2 text-xs font-mono bg-gray-900 border border-gray-700">
+          <h4 className="font-bold text-amber-400">Debug Info</h4>
+          <div className="space-y-1 text-gray-300">
+            <p><span className="text-gray-500">Session:</span> {debugInfo.sessionId || 'null'}</p>
+            <p><span className="text-gray-500">Protocol:</span> {debugInfo.protocolId || 'null'}</p>
+            <p><span className="text-gray-500">Habit Count:</span> {debugInfo.habitCount}</p>
+            <p><span className="text-gray-500">Habits:</span> {debugInfo.habitNames.length > 0 ? debugInfo.habitNames.join(', ') : '(none)'}</p>
+            <p><span className="text-gray-500">Loaded:</span> {debugInfo.timestamp}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
