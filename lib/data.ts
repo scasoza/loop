@@ -69,13 +69,15 @@ function isSupabaseConfigured(): boolean {
 export async function fetchProtocol(): Promise<Protocol | null> {
   const sessionId = getSessionId();
 
+  console.log('[Loop Debug] fetchProtocol called, sessionId:', sessionId);
+
   if (!isSupabaseConfigured()) {
-    console.log('Supabase not configured');
+    console.log('[Loop Debug] Supabase not configured');
     return null;
   }
 
   if (!sessionId) {
-    console.log('No session ID');
+    console.log('[Loop Debug] No session ID available');
     return null;
   }
 
@@ -88,16 +90,20 @@ export async function fetchProtocol(): Promise<Protocol | null> {
     .limit(1)
     .maybeSingle();
 
+  console.log('[Loop Debug] Protocol query result:', { data, error: error?.message });
+
   if (error) {
-    console.error('Error fetching protocol:', error.message);
+    console.error('[Loop Debug] Error fetching protocol:', error.message);
     return null;
   }
 
   if (data) {
+    console.log('[Loop Debug] Found existing protocol:', data.id);
     return data as Protocol;
   }
 
   // No protocol exists, create one
+  console.log('[Loop Debug] No protocol found, creating new one');
   const { data: created, error: insertError } = await supabase
     .from('protocols')
     .insert({
@@ -113,10 +119,11 @@ export async function fetchProtocol(): Promise<Protocol | null> {
     .single();
 
   if (insertError) {
-    console.error('Error creating protocol:', insertError.message);
+    console.error('[Loop Debug] Error creating protocol:', insertError.message);
     return null;
   }
 
+  console.log('[Loop Debug] Created new protocol:', created?.id);
   return created as Protocol;
 }
 
@@ -138,7 +145,10 @@ export async function updateProtocol(partial: Partial<Protocol>): Promise<void> 
 export async function fetchHabits(protocolId: string): Promise<Habit[]> {
   const sessionId = getSessionId();
 
+  console.log('[Loop Debug] fetchHabits called, protocolId:', protocolId, 'sessionId:', sessionId);
+
   if (!isSupabaseConfigured() || !sessionId) {
+    console.log('[Loop Debug] fetchHabits: not configured or no session');
     return [];
   }
 
@@ -149,8 +159,10 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
     .eq('protocol_id', protocolId)
     .order('created_at', { ascending: true });
 
+  console.log('[Loop Debug] fetchHabits result:', { count: data?.length, habits: data?.map(h => h.name), error: error?.message });
+
   if (error) {
-    console.error('Error fetching habits:', error.message);
+    console.error('[Loop Debug] Error fetching habits:', error.message);
     return [];
   }
 
@@ -306,13 +318,20 @@ export async function updateHabit(id: string, updates: { name: string }): Promis
 // Delete habit (removes it permanently)
 export async function deleteHabit(id: string): Promise<void> {
   const sessionId = getSessionId();
-  if (!isSupabaseConfigured() || !sessionId) return;
+  console.log('[Loop Debug] deleteHabit called, habitId:', id, 'sessionId:', sessionId);
 
-  await supabase
+  if (!isSupabaseConfigured() || !sessionId) {
+    console.log('[Loop Debug] deleteHabit: not configured or no session');
+    return;
+  }
+
+  const { error } = await supabase
     .from('habits')
     .delete()
     .eq('id', id)
     .eq('session_id', sessionId);
+
+  console.log('[Loop Debug] deleteHabit result:', { error: error?.message });
 }
 
 // Clear all data
