@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PlusCircleIcon, TrashIcon, PencilIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/solid';
+import { PlusCircleIcon, TrashIcon, PencilIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { CheckCircleIcon } from '@heroicons/react/24/outline';
 import {
   computeSummary,
@@ -15,40 +15,74 @@ import {
   HabitWithCompletion,
   Summary
 } from '../lib/data';
+import { getSessionId } from '../lib/session';
 
 interface Props {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
   onSummary?: (summary: Summary) => void;
 }
 
-const tierConfig: Record<CompletionTier, { label: string; color: string; bgColor: string; description: string }> = {
-  floor: { label: 'Floor', color: 'text-blue-400', bgColor: 'bg-blue-400', description: 'Bare minimum' },
-  base: { label: 'Base', color: 'text-indigo-400', bgColor: 'bg-indigo-400', description: 'Standard' },
-  bonus: { label: 'Bonus', color: 'text-amber-500', bgColor: 'bg-amber-500', description: 'Above & beyond' }
+const tierConfig: Record<CompletionTier, { label: string; color: string; bgColor: string; borderColor: string; description: string }> = {
+  floor: { label: 'Floor', color: 'text-blue-400', bgColor: 'bg-blue-400', borderColor: 'border-blue-400', description: 'Bare minimum' },
+  base: { label: 'Base', color: 'text-indigo-400', bgColor: 'bg-indigo-400', borderColor: 'border-indigo-400', description: 'Standard' },
+  bonus: { label: 'Bonus', color: 'text-amber-500', bgColor: 'bg-amber-500', borderColor: 'border-amber-500', description: 'Above & beyond' }
 };
 
 export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
   const [protocol, setProtocol] = useState<Protocol | null>(null);
   const [habits, setHabits] = useState<HabitWithCompletion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Add habit state
   const [newHabit, setNewHabit] = useState('');
-
-  // Edit habit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-
-  // Tier selection state
   const [selectingTierId, setSelectingTierId] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<{
+    sessionId: string | null;
+    protocolId: string | null;
+    habitCount: number;
+    habitNames: string[];
+    timestamp: string;
+  } | null>(null);
 
   useEffect(() => {
     const load = async () => {
+      setLoading(true);
+      setError(null);
+
+      const sessionId = getSessionId();
       const proto = await fetchProtocol();
+
+      if (!proto) {
+        setDebugInfo({
+          sessionId,
+          protocolId: null,
+          habitCount: 0,
+          habitNames: [],
+          timestamp: new Date().toISOString()
+        });
+        setError('Could not connect to database. Check Supabase configuration.');
+        setLoading(false);
+        return;
+      }
+
       setProtocol(proto);
       onThemeChange(proto.theme);
+
       const habitsData = await fetchHabitsWithCompletions(proto.id);
       setHabits(habitsData);
+
+      // Capture debug info
+      setDebugInfo({
+        sessionId,
+        protocolId: proto.id,
+        habitCount: habitsData.length,
+        habitNames: habitsData.map(h => h.name),
+        timestamp: new Date().toISOString()
+      });
+
       setLoading(false);
     };
     load();
@@ -64,9 +98,11 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
 
   const handleSelectTier = async (habit: HabitWithCompletion, tier: CompletionTier) => {
     const completion = await completeHabit(habit.id, tier);
-    setHabits((prev) => prev.map((h) =>
-      h.id === habit.id ? { ...h, todayCompletion: completion } : h
-    ));
+    if (completion) {
+      setHabits((prev) => prev.map((h) =>
+        h.id === habit.id ? { ...h, todayCompletion: completion } : h
+      ));
+    }
     setSelectingTierId(null);
   };
 
@@ -81,8 +117,10 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
   const handleAdd = async () => {
     if (!protocol || !newHabit.trim()) return;
     const created = await addHabit({ name: newHabit.trim(), protocolId: protocol.id });
-    setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
-    setNewHabit('');
+    if (created) {
+      setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
+      setNewHabit('');
+    }
   };
 
   const handleStartEdit = (habit: HabitWithCompletion, e: React.MouseEvent) => {
@@ -106,7 +144,29 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
     await deleteHabit(habitId);
   };
 
-  if (loading || !protocol) return <div className="glow-card p-5">Loading protocol...</div>;
+  if (loading) {
+    return <div className="glow-card p-5 text-center text-gray-400">Loading...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="glow-card p-5 space-y-3">
+        <div className="flex items-center gap-2 text-amber-400">
+          <ExclamationTriangleIcon className="h-6 w-6" />
+          <span className="font-semibold">Connection Error</span>
+        </div>
+        <p className="text-sm text-gray-400">{error}</p>
+        <p className="text-xs text-gray-500">
+          Make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel,
+          and that RLS policies allow access.
+        </p>
+      </div>
+    );
+  }
+
+  if (!protocol) {
+    return <div className="glow-card p-5 text-center text-gray-400">No protocol found</div>;
+  }
 
   const completionPct = Math.round((summary.completedCount / Math.max(summary.habitCount, 1)) * 100);
 
@@ -136,11 +196,12 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
           <h3 className="text-lg font-semibold">Today</h3>
           <span className="text-sm text-gray-300">{summary.completedCount}/{summary.habitCount} done</span>
         </div>
-        <div className="w-full bg-panel h-3 rounded-full overflow-hidden">
-          <div className="bg-success h-full transition-all" style={{ width: `${completionPct}%` }} />
-        </div>
+        {summary.habitCount > 0 && (
+          <div className="w-full bg-panel h-3 rounded-full overflow-hidden">
+            <div className="bg-success h-full transition-all" style={{ width: `${completionPct}%` }} />
+          </div>
+        )}
 
-        {/* Tier breakdown */}
         {summary.completedCount > 0 && (
           <div className="flex gap-2 text-xs">
             {summary.floorCount > 0 && (
@@ -167,7 +228,9 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
         <h3 className="font-semibold">Habits</h3>
 
         {habits.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4">No habits yet. Add one below.</p>
+          <p className="text-sm text-gray-400 text-center py-4">
+            No habits yet. Add your first habit below.
+          </p>
         ) : (
           <div className="space-y-2">
             {habits.map((habit) => (
@@ -175,7 +238,7 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
                 <div
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition ${
                     habit.todayCompletion
-                      ? `border-${habit.todayCompletion.tier === 'floor' ? 'blue-400' : habit.todayCompletion.tier === 'base' ? 'indigo-400' : 'amber-500'} bg-panel/80`
+                      ? `${tierConfig[habit.todayCompletion.tier].borderColor} bg-panel/80`
                       : 'border-gray-700 bg-panel/40'
                   }`}
                 >
@@ -237,7 +300,6 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
                   )}
                 </div>
 
-                {/* Tier selection */}
                 {selectingTierId === habit.id && editingId !== habit.id && (
                   <div className="flex gap-2 pl-4">
                     {(['floor', 'base', 'bonus'] as CompletionTier[]).map((tier) => (
@@ -308,6 +370,27 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Debug Panel - tap to toggle */}
+      <button
+        onClick={() => setShowDebug(!showDebug)}
+        className="w-full text-center text-xs text-gray-600 py-2"
+      >
+        {showDebug ? 'Hide Debug Info' : 'Show Debug Info'}
+      </button>
+
+      {showDebug && debugInfo && (
+        <div className="glow-card p-4 space-y-2 text-xs font-mono bg-gray-900 border border-gray-700">
+          <h4 className="font-bold text-amber-400">Debug Info</h4>
+          <div className="space-y-1 text-gray-300">
+            <p><span className="text-gray-500">Session:</span> {debugInfo.sessionId || 'null'}</p>
+            <p><span className="text-gray-500">Protocol:</span> {debugInfo.protocolId || 'null'}</p>
+            <p><span className="text-gray-500">Habit Count:</span> {debugInfo.habitCount}</p>
+            <p><span className="text-gray-500">Habits:</span> {debugInfo.habitNames.length > 0 ? debugInfo.habitNames.join(', ') : '(none)'}</p>
+            <p><span className="text-gray-500">Loaded:</span> {debugInfo.timestamp}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
