@@ -69,7 +69,7 @@ export function Layout({ children, onTabChange, currentTab, theme = 'dark', onTh
   };
 
   return (
-    <div className="min-h-screen bg-midnight text-white flex flex-col max-w-xl mx-auto">
+    <div className="min-h-screen bg-midnight flex flex-col max-w-xl mx-auto">
       <header className="flex items-center justify-between px-4 pt-6 pb-4">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-accent text-black grid place-items-center font-semibold">Y</div>

@@ -104,14 +104,43 @@ button:disabled {
 }
 
 /* Light mode specific overrides */
-:root.light .border-gray-700 {
-  border-color: rgba(0, 0, 0, 0.1);
-}
-
+:root.light .border-gray-700,
 :root.light .border-gray-800 {
-  border-color: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 :root.light .bg-gray-900 {
   background-color: #e2e8f0;
+}
+
+:root.light .text-white {
+  color: var(--text-primary);
+}
+
+:root.light .text-gray-300 {
+  color: var(--text-primary);
+}
+
+:root.light .text-gray-400 {
+  color: var(--text-secondary);
+}
+
+:root.light .text-gray-500 {
+  color: var(--text-muted);
+}
+
+:root.light .text-gray-600 {
+  color: var(--text-muted);
+}
+
+:root.light .bg-panel {
+  background-color: var(--bg-panel);
+}
+
+:root.light .hover\:text-white:hover {
+  color: var(--text-primary);
+}
+
+:root.light .hover\:bg-panel:hover {
+  background-color: #d1d5db;
 }
