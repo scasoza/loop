@@ -102,24 +102,42 @@ export function CalendarPanel({ summary }: Props) {
           ))}
         </div>
         <div className="grid grid-cols-7 gap-1">
-          {days.map((day, idx) => (
-            <div
-              key={idx}
-              className={`aspect-square rounded-lg grid place-items-center text-sm relative ${
-                day.isToday
-                  ? 'bg-accent text-black font-bold'
-                  : day.isCurrentMonth
-                  ? `bg-panel text-gray-200 ${getCompletionColor(day.stats)}`
-                  : 'bg-transparent'
-              }`}
-              title={day.stats ? `${day.stats.completedCount}/${day.stats.totalHabits} completed` : ''}
-            >
-              {day.label}
-              {day.stats && day.stats.completedCount > 0 && !day.isToday && (
-                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-success" />
-              )}
-            </div>
-          ))}
+          {days.map((day, idx) => {
+            const completionRate = day.stats
+              ? Math.round((day.stats.completedCount / day.stats.totalHabits) * 100)
+              : 0;
+
+            return (
+              <div
+                key={idx}
+                className={`aspect-square rounded-lg flex flex-col items-center justify-center text-sm relative overflow-hidden ${
+                  day.isToday
+                    ? 'bg-accent text-black font-bold'
+                    : day.isCurrentMonth
+                    ? `bg-panel text-gray-200 ${getCompletionColor(day.stats)}`
+                    : 'bg-transparent'
+                }`}
+                title={day.stats ? `${day.stats.completedCount}/${day.stats.totalHabits} completed (${completionRate}%)` : ''}
+              >
+                <span>{day.label}</span>
+                {/* Progress bar at bottom */}
+                {day.isCurrentMonth && day.stats && day.stats.completedCount > 0 && !day.isToday && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
+                    <div
+                      className="h-full bg-success transition-all"
+                      style={{ width: `${completionRate}%` }}
+                    />
+                  </div>
+                )}
+                {/* Show fraction for days with data */}
+                {day.stats && day.stats.completedCount > 0 && !day.isToday && (
+                  <span className="text-[8px] text-gray-400 -mt-0.5">
+                    {day.stats.completedCount}/{day.stats.totalHabits}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Legend */}
