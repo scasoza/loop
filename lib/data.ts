@@ -211,6 +211,67 @@ export async function fetchHabitsWithCompletions(protocolId: string): Promise<Ha
   }));
 }
 
+// Fetch completions for a date range (for calendar view)
+export interface DayStats {
+  date: string;
+  totalHabits: number;
+  completedCount: number;
+  floorCount: number;
+  baseCount: number;
+  bonusCount: number;
+}
+
+export async function fetchCompletionsForDateRange(
+  startDate: string,
+  endDate: string
+): Promise<Record<string, DayStats>> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return {};
+  }
+
+  const protocol = await fetchProtocol();
+  if (!protocol) return {};
+
+  const habits = await fetchHabits(protocol.id);
+  const totalHabits = habits.length;
+
+  if (totalHabits === 0) return {};
+
+  const { data, error } = await supabase
+    .from('habit_completions')
+    .select('*')
+    .eq('session_id', sessionId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  if (error) {
+    console.error('Error fetching date range completions:', error.message);
+    return {};
+  }
+
+  // Group by date
+  const result: Record<string, DayStats> = {};
+  (data || []).forEach((c: HabitCompletion) => {
+    if (!result[c.date]) {
+      result[c.date] = {
+        date: c.date,
+        totalHabits,
+        completedCount: 0,
+        floorCount: 0,
+        baseCount: 0,
+        bonusCount: 0
+      };
+    }
+    result[c.date].completedCount++;
+    if (c.tier === 'floor') result[c.date].floorCount++;
+    if (c.tier === 'base') result[c.date].baseCount++;
+    if (c.tier === 'bonus') result[c.date].bonusCount++;
+  });
+
+  return result;
+}
+
 // Complete a habit for today with a tier
 export async function completeHabit(habitId: string, tier: CompletionTier): Promise<HabitCompletion | null> {
   const sessionId = getSessionId();
