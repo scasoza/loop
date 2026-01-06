@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Layout, TabKey } from '../components/Layout';
 import { ProtocolPanel } from '../components/ProtocolPanel';
 import { SystemPanel } from '../components/SystemPanel';
 import { CalendarPanel } from '../components/CalendarPanel';
 import { CoachPanel } from '../components/CoachPanel';
-import { Summary } from '../lib/data';
+import { Summary, fetchProtocol } from '../lib/data';
 
 export default function Home() {
   const [tab, setTab] = useState<TabKey>('protocol');
@@ -17,10 +17,21 @@ export default function Home() {
     bonusCount: 0
   });
 
+  // Load theme from protocol on initial app load
+  useEffect(() => {
+    const loadTheme = async () => {
+      const proto = await fetchProtocol();
+      if (proto?.theme) {
+        setTheme(proto.theme);
+      }
+    };
+    loadTheme();
+  }, []);
+
   const content = useMemo(() => {
     switch (tab) {
       case 'system':
-        return <SystemPanel theme={theme} />;
+        return <SystemPanel theme={theme} onThemeChange={setTheme} />;
       case 'calendar':
         return <CalendarPanel summary={summary} />;
       case 'coach':

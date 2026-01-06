@@ -69,7 +69,7 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
       }
 
       setProtocol(proto);
-      onThemeChange(proto.theme);
+      // Don't override user's theme selection - theme is managed by SystemPanel
 
       const habitsData = await fetchHabitsWithCompletions(proto.id);
       setHabits(habitsData);
