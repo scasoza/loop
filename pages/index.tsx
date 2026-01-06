@@ -32,7 +32,7 @@ export default function Home() {
   }, [tab, theme, summary]);
 
   return (
-    <Layout currentTab={tab} onTabChange={setTab}>
+    <Layout currentTab={tab} onTabChange={setTab} theme={theme} onThemeChange={setTheme}>
       {content}
     </Layout>
   );

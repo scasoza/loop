@@ -1,5 +1,5 @@
 import { ReactNode, useState, useRef, useEffect } from 'react';
-import { Bars3BottomLeftIcon, XMarkIcon, Cog6ToothIcon, CalendarIcon, SparklesIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
+import { Bars3BottomLeftIcon, XMarkIcon, Cog6ToothIcon, CalendarIcon, SparklesIcon, ClipboardDocumentListIcon, SunIcon, MoonIcon } from '@heroicons/react/24/outline';
 import classNames from 'classnames';
 import dayjs from 'dayjs';
 
@@ -16,11 +16,31 @@ interface Props {
   children: ReactNode;
   onTabChange?: (tab: TabKey) => void;
   currentTab: TabKey;
+  theme?: 'light' | 'dark' | 'system';
+  onThemeChange?: (theme: 'light' | 'dark' | 'system') => void;
 }
 
-export function Layout({ children, onTabChange, currentTab }: Props) {
+export function Layout({ children, onTabChange, currentTab, theme = 'dark', onThemeChange }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Apply theme to document root
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'light') {
+      root.classList.add('light');
+    } else if (theme === 'dark') {
+      root.classList.remove('light');
+    } else {
+      // System preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark) {
+        root.classList.remove('light');
+      } else {
+        root.classList.add('light');
+      }
+    }
+  }, [theme]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -37,6 +57,11 @@ export function Layout({ children, onTabChange, currentTab }: Props) {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [menuOpen]);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark';
+    onThemeChange?.(next);
+  };
 
   const handleNavClick = (tabId: TabKey) => {
     onTabChange?.(tabId);
@@ -90,6 +115,21 @@ export function Layout({ children, onTabChange, currentTab }: Props) {
                   </button>
                 );
               })}
+              <div className="border-t border-gray-700">
+                <button
+                  onClick={toggleTheme}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm text-gray-300 hover:bg-panel hover:text-white transition"
+                >
+                  {theme === 'light' ? (
+                    <SunIcon className="h-5 w-5" />
+                  ) : theme === 'dark' ? (
+                    <MoonIcon className="h-5 w-5" />
+                  ) : (
+                    <Cog6ToothIcon className="h-5 w-5" />
+                  )}
+                  Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                </button>
+              </div>
               <div className="border-t border-gray-700">
                 <div className="px-4 py-2 text-xs text-gray-500">
                   Your Rhythm v1.0
