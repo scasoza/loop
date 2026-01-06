@@ -154,10 +154,9 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
 
   const { data, error } = await supabase
     .from('habits')
-    .select('id, name, protocol_id, archived')
+    .select('id, name, protocol_id')
     .eq('session_id', sessionId)
-    .eq('protocol_id', protocolId)
-    .or('archived.is.null,archived.eq.false');
+    .eq('protocol_id', protocolId);
 
   console.log('[Loop Debug] fetchHabits result:', { count: data?.length, habits: data?.map(h => h.name), error: error?.message });
 
@@ -315,24 +314,23 @@ export async function updateHabit(id: string, updates: { name: string }): Promis
     .eq('session_id', sessionId);
 }
 
-// Archive habit (soft delete - preserves history)
+// Delete habit permanently
 export async function deleteHabit(id: string): Promise<void> {
   const sessionId = getSessionId();
-  console.log('[Loop Debug] deleteHabit (archive) called, habitId:', id, 'sessionId:', sessionId);
+  console.log('[Loop Debug] deleteHabit called, habitId:', id, 'sessionId:', sessionId);
 
   if (!isSupabaseConfigured() || !sessionId) {
     console.log('[Loop Debug] deleteHabit: not configured or no session');
     return;
   }
 
-  // Soft delete - mark as archived instead of deleting
   const { error } = await supabase
     .from('habits')
-    .update({ archived: true })
+    .delete()
     .eq('id', id)
     .eq('session_id', sessionId);
 
-  console.log('[Loop Debug] deleteHabit (archive) result:', { error: error?.message });
+  console.log('[Loop Debug] deleteHabit result:', { error: error?.message });
 }
 
 // Clear all data

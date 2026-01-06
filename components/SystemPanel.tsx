@@ -3,16 +3,20 @@ import { clearData, updateProtocol } from '../lib/data';
 
 const RULES = [
   'Intensity is the teacher. Do not negotiate with your lower self.',
-  'Consistency establishes the rhythm. Miss once, it’s an accident. Miss twice, it’s a new habit.',
+  'Consistency establishes the rhythm. Miss once, it\'s an accident. Miss twice, it\'s a new habit.',
   'The Crucible is a period of heightened focus. Use it to break a pattern or build one.'
 ];
 
-export function SystemPanel({ theme }: { theme: 'light' | 'dark' | 'system' }) {
-  const [selected, setSelected] = useState<'light' | 'dark' | 'system'>(theme);
+interface Props {
+  theme: 'light' | 'dark' | 'system';
+  onThemeChange?: (theme: 'light' | 'dark' | 'system') => void;
+}
+
+export function SystemPanel({ theme, onThemeChange }: Props) {
   const [cleared, setCleared] = useState(false);
 
   const handleTheme = async (value: 'light' | 'dark' | 'system') => {
-    setSelected(value);
+    onThemeChange?.(value);
     await updateProtocol({ theme: value });
   };
 
@@ -37,7 +41,7 @@ export function SystemPanel({ theme }: { theme: 'light' | 'dark' | 'system' }) {
             <button
               key={mode}
               onClick={() => handleTheme(mode)}
-              className={`tab-button ${selected === mode ? 'active' : 'bg-panel text-gray-300'}`}
+              className={`tab-button ${theme === mode ? 'active' : 'bg-panel text-gray-300'}`}
             >
               {mode.toUpperCase()}
             </button>
