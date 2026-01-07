@@ -31,8 +31,17 @@ export interface HabitCompletion {
   tier: CompletionTier;
 }
 
+export interface HabitStats {
+  currentStreak: number;
+  longestStreak: number;
+  completionRate: number; // 0-100 percentage over last 30 days
+  totalCompletions: number;
+  lastCompleted?: string; // date string
+}
+
 export interface HabitWithCompletion extends Habit {
   todayCompletion?: HabitCompletion;
+  stats?: HabitStats;
 }
 
 export interface Summary {
@@ -195,7 +204,7 @@ export async function fetchTodayCompletions(habitIds: string[]): Promise<Record<
   return result;
 }
 
-// Get habits with today's completion status
+// Get habits with today's completion status and stats
 export async function fetchHabitsWithCompletions(protocolId: string): Promise<HabitWithCompletion[]> {
   const habits = await fetchHabits(protocolId);
 
@@ -203,11 +212,16 @@ export async function fetchHabitsWithCompletions(protocolId: string): Promise<Ha
     return [];
   }
 
-  const completions = await fetchTodayCompletions(habits.map(h => h.id));
+  const habitIds = habits.map(h => h.id);
+  const [completions, stats] = await Promise.all([
+    fetchTodayCompletions(habitIds),
+    fetchAllHabitStats(habitIds)
+  ]);
 
   return habits.map(h => ({
     ...h,
-    todayCompletion: completions[h.id]
+    todayCompletion: completions[h.id],
+    stats: stats[h.id]
   }));
 }
 
@@ -268,6 +282,187 @@ export async function fetchCompletionsForDateRange(
     if (c.tier === 'base') result[c.date].baseCount++;
     if (c.tier === 'bonus') result[c.date].bonusCount++;
   });
+
+  return result;
+}
+
+// Calculate stats for a single habit
+export async function fetchHabitStats(habitId: string): Promise<HabitStats> {
+  const sessionId = getSessionId();
+  const defaultStats: HabitStats = {
+    currentStreak: 0,
+    longestStreak: 0,
+    completionRate: 0,
+    totalCompletions: 0
+  };
+
+  if (!isSupabaseConfigured() || !sessionId) {
+    return defaultStats;
+  }
+
+  // Get all completions for this habit, ordered by date descending
+  const { data, error } = await supabase
+    .from('habit_completions')
+    .select('date, tier')
+    .eq('session_id', sessionId)
+    .eq('habit_id', habitId)
+    .order('date', { ascending: false });
+
+  if (error || !data || data.length === 0) {
+    return defaultStats;
+  }
+
+  const completions = data as { date: string; tier: CompletionTier }[];
+  const totalCompletions = completions.length;
+  const lastCompleted = completions[0]?.date;
+
+  // Calculate current streak (consecutive days ending today or yesterday)
+  const today = dayjs();
+  const completionDates = new Set(completions.map(c => c.date));
+
+  let currentStreak = 0;
+  let checkDate = today;
+
+  // Start from today, go backwards
+  // If today isn't completed, start from yesterday
+  if (!completionDates.has(today.format('YYYY-MM-DD'))) {
+    checkDate = today.subtract(1, 'day');
+  }
+
+  while (completionDates.has(checkDate.format('YYYY-MM-DD'))) {
+    currentStreak++;
+    checkDate = checkDate.subtract(1, 'day');
+  }
+
+  // Calculate longest streak
+  let longestStreak = 0;
+  let tempStreak = 0;
+
+  // Sort dates ascending for longest streak calculation
+  const sortedDates = Array.from(completionDates).sort();
+
+  for (let i = 0; i < sortedDates.length; i++) {
+    if (i === 0) {
+      tempStreak = 1;
+    } else {
+      const prevDate = dayjs(sortedDates[i - 1]);
+      const currDate = dayjs(sortedDates[i]);
+      const diffDays = currDate.diff(prevDate, 'day');
+
+      if (diffDays === 1) {
+        tempStreak++;
+      } else {
+        tempStreak = 1;
+      }
+    }
+    longestStreak = Math.max(longestStreak, tempStreak);
+  }
+
+  // Calculate completion rate (last 30 days)
+  const thirtyDaysAgo = today.subtract(30, 'day');
+  const recentCompletions = completions.filter(c =>
+    dayjs(c.date).isAfter(thirtyDaysAgo) || dayjs(c.date).isSame(thirtyDaysAgo)
+  );
+  const completionRate = Math.round((recentCompletions.length / 30) * 100);
+
+  return {
+    currentStreak,
+    longestStreak,
+    completionRate,
+    totalCompletions,
+    lastCompleted
+  };
+}
+
+// Fetch stats for multiple habits at once (more efficient)
+export async function fetchAllHabitStats(habitIds: string[]): Promise<Record<string, HabitStats>> {
+  const sessionId = getSessionId();
+  const result: Record<string, HabitStats> = {};
+
+  if (!isSupabaseConfigured() || !sessionId || habitIds.length === 0) {
+    return result;
+  }
+
+  // Get all completions for these habits
+  const { data, error } = await supabase
+    .from('habit_completions')
+    .select('habit_id, date, tier')
+    .eq('session_id', sessionId)
+    .in('habit_id', habitIds)
+    .order('date', { ascending: false });
+
+  if (error || !data) {
+    return result;
+  }
+
+  // Group completions by habit_id
+  const completionsByHabit: Record<string, { date: string; tier: CompletionTier }[]> = {};
+  habitIds.forEach(id => { completionsByHabit[id] = []; });
+
+  data.forEach((c: { habit_id: string; date: string; tier: CompletionTier }) => {
+    if (!completionsByHabit[c.habit_id]) {
+      completionsByHabit[c.habit_id] = [];
+    }
+    completionsByHabit[c.habit_id].push({ date: c.date, tier: c.tier });
+  });
+
+  const today = dayjs();
+  const thirtyDaysAgo = today.subtract(30, 'day');
+
+  // Calculate stats for each habit
+  for (const habitId of habitIds) {
+    const completions = completionsByHabit[habitId];
+
+    if (completions.length === 0) {
+      result[habitId] = {
+        currentStreak: 0,
+        longestStreak: 0,
+        completionRate: 0,
+        totalCompletions: 0
+      };
+      continue;
+    }
+
+    const completionDates = new Set(completions.map(c => c.date));
+
+    // Current streak
+    let currentStreak = 0;
+    let checkDate = today;
+    if (!completionDates.has(today.format('YYYY-MM-DD'))) {
+      checkDate = today.subtract(1, 'day');
+    }
+    while (completionDates.has(checkDate.format('YYYY-MM-DD'))) {
+      currentStreak++;
+      checkDate = checkDate.subtract(1, 'day');
+    }
+
+    // Longest streak
+    let longestStreak = 0;
+    let tempStreak = 0;
+    const sortedDates = Array.from(completionDates).sort();
+    for (let i = 0; i < sortedDates.length; i++) {
+      if (i === 0) {
+        tempStreak = 1;
+      } else {
+        const diffDays = dayjs(sortedDates[i]).diff(dayjs(sortedDates[i - 1]), 'day');
+        tempStreak = diffDays === 1 ? tempStreak + 1 : 1;
+      }
+      longestStreak = Math.max(longestStreak, tempStreak);
+    }
+
+    // Completion rate (last 30 days)
+    const recentCompletions = completions.filter(c =>
+      dayjs(c.date).isAfter(thirtyDaysAgo) || dayjs(c.date).isSame(thirtyDaysAgo)
+    );
+
+    result[habitId] = {
+      currentStreak,
+      longestStreak,
+      completionRate: Math.round((recentCompletions.length / 30) * 100),
+      totalCompletions: completions.length,
+      lastCompleted: completions[0]?.date
+    };
+  }
 
   return result;
 }

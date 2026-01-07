@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PlusCircleIcon, TrashIcon, PencilIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
+import { PlusCircleIcon, TrashIcon, PencilIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon, FireIcon } from '@heroicons/react/24/solid';
 import { CheckCircleIcon } from '@heroicons/react/24/outline';
 import {
   computeSummary,
@@ -265,20 +265,51 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
                         className="flex items-center gap-3 flex-1 text-left"
                       >
                         {habit.todayCompletion ? (
-                          <div className={`h-6 w-6 rounded-full ${tierConfig[habit.todayCompletion.tier].bgColor} flex items-center justify-center`}>
+                          <div className={`h-6 w-6 rounded-full ${tierConfig[habit.todayCompletion.tier].bgColor} flex items-center justify-center flex-shrink-0`}>
                             <CheckIcon className="h-4 w-4 text-black" />
                           </div>
                         ) : (
-                          <CheckCircleIcon className="h-6 w-6 text-gray-500" />
+                          <CheckCircleIcon className="h-6 w-6 text-gray-500 flex-shrink-0" />
                         )}
-                        <div>
-                          <span className={`font-medium ${habit.todayCompletion ? 'text-white' : 'text-gray-300'}`}>
-                            {habit.name}
-                          </span>
-                          {habit.todayCompletion && (
-                            <span className={`ml-2 text-xs ${tierConfig[habit.todayCompletion.tier].color}`}>
-                              {tierConfig[habit.todayCompletion.tier].label}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-medium ${habit.todayCompletion ? 'text-white' : 'text-gray-300'}`}>
+                              {habit.name}
                             </span>
+                            {habit.todayCompletion && (
+                              <span className={`text-xs ${tierConfig[habit.todayCompletion.tier].color}`}>
+                                {tierConfig[habit.todayCompletion.tier].label}
+                              </span>
+                            )}
+                          </div>
+                          {/* Stats row */}
+                          {habit.stats && (habit.stats.currentStreak > 0 || habit.stats.totalCompletions > 0) && (
+                            <div className="flex items-center gap-3 mt-1">
+                              {/* Streak indicator */}
+                              {habit.stats.currentStreak > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <FireIcon className={`h-3.5 w-3.5 ${habit.stats.currentStreak >= 7 ? 'text-orange-500' : 'text-gray-400'}`} />
+                                  <span className={`text-xs ${habit.stats.currentStreak >= 7 ? 'text-orange-500 font-medium' : 'text-gray-500'}`}>
+                                    {habit.stats.currentStreak}d
+                                  </span>
+                                </div>
+                              )}
+                              {/* Completion rate mini bar */}
+                              {habit.stats.totalCompletions > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${
+                                        habit.stats.completionRate >= 80 ? 'bg-success' :
+                                        habit.stats.completionRate >= 50 ? 'bg-amber-500' : 'bg-gray-500'
+                                      }`}
+                                      style={{ width: `${habit.stats.completionRate}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-gray-500">{habit.stats.completionRate}%</span>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </button>
