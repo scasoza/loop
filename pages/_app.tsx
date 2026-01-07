@@ -2,10 +2,15 @@ import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { useEffect } from 'react';
 import '../styles/globals.css';
+import { initOneSignal } from '../lib/onesignal';
 
 function MyApp({ Component, pageProps }: AppProps) {
-  // Register service worker
+  // Initialize OneSignal and register service worker
   useEffect(() => {
+    // Initialize OneSignal for push notifications
+    initOneSignal();
+
+    // Register our service worker as fallback
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch((err) => {
         console.log('Service worker registration failed:', err);

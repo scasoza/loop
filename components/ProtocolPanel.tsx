@@ -22,12 +22,16 @@ import {
 } from '../lib/data';
 import { getSessionId } from '../lib/session';
 import {
-  isNotificationSupported,
-  getNotificationPermission,
-  requestNotificationPermission,
-  scheduleAllReminders,
   formatReminderTime
 } from '../lib/notifications';
+import {
+  isOneSignalAvailable,
+  getOneSignalPermission,
+  requestOneSignalPermission,
+  setExternalUserId,
+  syncHabitReminders,
+  removeHabitReminder
+} from '../lib/onesignal';
 
 interface Props {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
@@ -114,12 +118,17 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
         timestamp: new Date().toISOString()
       });
 
-      // Check notification permission and schedule reminders
-      if (isNotificationSupported()) {
-        const permission = getNotificationPermission();
-        setNotificationPermission(permission);
-        if (permission === 'granted') {
-          scheduleAllReminders(habitsData);
+      // Check OneSignal notification permission and sync reminders
+      if (isOneSignalAvailable()) {
+        // Link OneSignal to this session
+        if (sessionId) {
+          await setExternalUserId(sessionId);
+        }
+
+        const permission = await getOneSignalPermission();
+        setNotificationPermission(permission ? 'granted' : 'default');
+        if (permission) {
+          await syncHabitReminders(habitsData);
         }
       } else {
         setNotificationPermission('unsupported');
@@ -200,10 +209,14 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
   };
 
   const handleRequestNotificationPermission = async () => {
-    const permission = await requestNotificationPermission();
-    setNotificationPermission(permission);
-    if (permission === 'granted') {
-      scheduleAllReminders(habits);
+    const granted = await requestOneSignalPermission();
+    setNotificationPermission(granted ? 'granted' : 'denied');
+    if (granted) {
+      const sessionId = getSessionId();
+      if (sessionId) {
+        await setExternalUserId(sessionId);
+      }
+      await syncHabitReminders(habits);
     }
   };
 
@@ -217,35 +230,31 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
 
   const handleSaveReminder = async (habit: HabitWithCompletion) => {
     const time = reminderTimeInput.trim() || null;
-    setHabits((prev) => prev.map((h) =>
+    const updatedHabits = habits.map(h =>
       h.id === habit.id ? { ...h, reminder_time: time || undefined } : h
-    ));
+    );
+    setHabits(updatedHabits);
     await setHabitReminder(habit.id, time);
     setSettingReminderId(null);
     setReminderTimeInput('');
 
-    // Reschedule all reminders
+    // Sync with OneSignal
     if (notificationPermission === 'granted') {
-      const updatedHabits = habits.map(h =>
-        h.id === habit.id ? { ...h, reminder_time: time || undefined } : h
-      );
-      scheduleAllReminders(updatedHabits);
+      await syncHabitReminders(updatedHabits);
     }
   };
 
   const handleClearReminder = async (habit: HabitWithCompletion, e: React.MouseEvent) => {
     e.stopPropagation();
-    setHabits((prev) => prev.map((h) =>
+    const updatedHabits = habits.map(h =>
       h.id === habit.id ? { ...h, reminder_time: undefined } : h
-    ));
+    );
+    setHabits(updatedHabits);
     await setHabitReminder(habit.id, null);
 
-    // Reschedule all reminders
+    // Remove from OneSignal
     if (notificationPermission === 'granted') {
-      const updatedHabits = habits.map(h =>
-        h.id === habit.id ? { ...h, reminder_time: undefined } : h
-      );
-      scheduleAllReminders(updatedHabits);
+      await removeHabitReminder(habit.id);
     }
   };
 
