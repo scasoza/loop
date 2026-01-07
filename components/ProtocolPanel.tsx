@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PlusCircleIcon, TrashIcon, PencilIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon, FireIcon } from '@heroicons/react/24/solid';
-import { CheckCircleIcon } from '@heroicons/react/24/outline';
+import { PlusCircleIcon, TrashIcon, PencilIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon, FireIcon, BellIcon, BellSlashIcon, ClockIcon } from '@heroicons/react/24/solid';
+import { CheckCircleIcon, BellIcon as BellOutlineIcon } from '@heroicons/react/24/outline';
 import {
   computeSummary,
   fetchHabitsWithCompletions,
@@ -11,6 +11,7 @@ import {
   addHabit,
   updateHabit,
   deleteHabit,
+  setHabitReminder,
   Protocol,
   HabitWithCompletion,
   Summary,
@@ -20,6 +21,13 @@ import {
   FreezeInventory
 } from '../lib/data';
 import { getSessionId } from '../lib/session';
+import {
+  isNotificationSupported,
+  getNotificationPermission,
+  requestNotificationPermission,
+  scheduleAllReminders,
+  formatReminderTime
+} from '../lib/notifications';
 
 interface Props {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
@@ -46,6 +54,9 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
   const [freezeInventory, setFreezeInventory] = useState<FreezeInventory | null>(null);
   const [freezeNotification, setFreezeNotification] = useState<string | null>(null);
   const [newFreezeAwarded, setNewFreezeAwarded] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [settingReminderId, setSettingReminderId] = useState<string | null>(null);
+  const [reminderTimeInput, setReminderTimeInput] = useState('');
   const [debugInfo, setDebugInfo] = useState<{
     sessionId: string | null;
     protocolId: string | null;
@@ -102,6 +113,17 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
         habitNames: habitsData.map(h => h.name),
         timestamp: new Date().toISOString()
       });
+
+      // Check notification permission and schedule reminders
+      if (isNotificationSupported()) {
+        const permission = getNotificationPermission();
+        setNotificationPermission(permission);
+        if (permission === 'granted') {
+          scheduleAllReminders(habitsData);
+        }
+      } else {
+        setNotificationPermission('unsupported');
+      }
 
       setLoading(false);
     };
@@ -175,6 +197,56 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
     e.stopPropagation();
     setHabits((prev) => prev.filter((h) => h.id !== habitId));
     await deleteHabit(habitId);
+  };
+
+  const handleRequestNotificationPermission = async () => {
+    const permission = await requestNotificationPermission();
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      scheduleAllReminders(habits);
+    }
+  };
+
+  const handleStartSetReminder = (habit: HabitWithCompletion, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSettingReminderId(habit.id);
+    setReminderTimeInput(habit.reminder_time || '');
+    setSelectingTierId(null);
+    setEditingId(null);
+  };
+
+  const handleSaveReminder = async (habit: HabitWithCompletion) => {
+    const time = reminderTimeInput.trim() || null;
+    setHabits((prev) => prev.map((h) =>
+      h.id === habit.id ? { ...h, reminder_time: time || undefined } : h
+    ));
+    await setHabitReminder(habit.id, time);
+    setSettingReminderId(null);
+    setReminderTimeInput('');
+
+    // Reschedule all reminders
+    if (notificationPermission === 'granted') {
+      const updatedHabits = habits.map(h =>
+        h.id === habit.id ? { ...h, reminder_time: time || undefined } : h
+      );
+      scheduleAllReminders(updatedHabits);
+    }
+  };
+
+  const handleClearReminder = async (habit: HabitWithCompletion, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setHabits((prev) => prev.map((h) =>
+      h.id === habit.id ? { ...h, reminder_time: undefined } : h
+    ));
+    await setHabitReminder(habit.id, null);
+
+    // Reschedule all reminders
+    if (notificationPermission === 'granted') {
+      const updatedHabits = habits.map(h =>
+        h.id === habit.id ? { ...h, reminder_time: undefined } : h
+      );
+      scheduleAllReminders(updatedHabits);
+    }
   };
 
   if (loading) {
@@ -275,6 +347,24 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
             <span className="text-sm text-success">
               Streak freeze earned for {newFreezeAwarded}!
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Notification Permission Banner */}
+      {notificationPermission === 'default' && (
+        <div className="glow-card p-4 bg-indigo-500/10 border border-indigo-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BellOutlineIcon className="h-5 w-5 text-indigo-400" />
+              <span className="text-sm text-indigo-300">Enable reminders for your habits?</span>
+            </div>
+            <button
+              onClick={handleRequestNotificationPermission}
+              className="px-3 py-1 bg-indigo-500 text-white text-sm rounded-lg hover:bg-indigo-600 transition"
+            >
+              Enable
+            </button>
           </div>
         </div>
       )}
@@ -403,6 +493,24 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
                         </div>
                       </button>
                       <div className="flex items-center gap-1">
+                        {/* Reminder indicator/button */}
+                        {notificationPermission === 'granted' && (
+                          <button
+                            onClick={(e) => handleStartSetReminder(habit, e)}
+                            className={`p-1.5 rounded transition ${
+                              habit.reminder_time
+                                ? 'text-indigo-400 hover:bg-indigo-400/20'
+                                : 'text-gray-500 hover:text-indigo-400 hover:bg-indigo-400/20'
+                            }`}
+                            title={habit.reminder_time ? formatReminderTime(habit.reminder_time) : 'Set reminder'}
+                          >
+                            {habit.reminder_time ? (
+                              <BellIcon className="h-4 w-4" />
+                            ) : (
+                              <BellOutlineIcon className="h-4 w-4" />
+                            )}
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleStartEdit(habit, e)}
                           className="p-1.5 text-gray-500 hover:text-accent hover:bg-accent/20 rounded transition"
@@ -444,6 +552,41 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
                         Clear
                       </button>
                     )}
+                  </div>
+                )}
+
+                {/* Reminder Time Setting */}
+                {settingReminderId === habit.id && (
+                  <div className="flex items-center gap-2 pl-4 py-2 bg-indigo-500/10 rounded-lg">
+                    <ClockIcon className="h-4 w-4 text-indigo-400" />
+                    <input
+                      type="time"
+                      value={reminderTimeInput}
+                      onChange={(e) => setReminderTimeInput(e.target.value)}
+                      className="bg-midnight border border-indigo-500/30 rounded-lg px-2 py-1 text-sm text-white"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => handleSaveReminder(habit)}
+                      className="p-1.5 text-success hover:bg-success/20 rounded"
+                    >
+                      <CheckIcon className="h-5 w-5" />
+                    </button>
+                    {habit.reminder_time && (
+                      <button
+                        onClick={(e) => handleClearReminder(habit, e)}
+                        className="p-1.5 text-gray-400 hover:text-danger hover:bg-danger/20 rounded"
+                        title="Remove reminder"
+                      >
+                        <BellSlashIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSettingReminderId(null)}
+                      className="p-1.5 text-gray-400 hover:bg-gray-600/20 rounded"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
                   </div>
                 )}
               </div>

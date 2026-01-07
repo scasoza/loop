@@ -22,6 +22,7 @@ export interface Habit {
   name: string;
   protocol_id: string;
   archived?: boolean;
+  reminder_time?: string; // HH:MM format, null means no reminder
 }
 
 export interface HabitCompletion {
@@ -182,7 +183,7 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
 
   const { data, error } = await supabase
     .from('habits')
-    .select('id, name, protocol_id')
+    .select('id, name, protocol_id, reminder_time')
     .eq('session_id', sessionId)
     .eq('protocol_id', protocolId);
 
@@ -794,7 +795,7 @@ export async function addHabit(input: { name: string; protocolId: string }): Pro
 }
 
 // Update habit name
-export async function updateHabit(id: string, updates: { name: string }): Promise<void> {
+export async function updateHabit(id: string, updates: { name?: string; reminder_time?: string | null }): Promise<void> {
   const sessionId = getSessionId();
   if (!isSupabaseConfigured() || !sessionId) return;
 
@@ -803,6 +804,11 @@ export async function updateHabit(id: string, updates: { name: string }): Promis
     .update(updates)
     .eq('id', id)
     .eq('session_id', sessionId);
+}
+
+// Update habit reminder time
+export async function setHabitReminder(id: string, reminderTime: string | null): Promise<void> {
+  await updateHabit(id, { reminder_time: reminderTime });
 }
 
 // Delete habit permanently
