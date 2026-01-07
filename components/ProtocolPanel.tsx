@@ -13,7 +13,11 @@ import {
   deleteHabit,
   Protocol,
   HabitWithCompletion,
-  Summary
+  Summary,
+  getFreezeInventory,
+  checkAndAutoApplyFreeze,
+  checkAndAwardMilestoneFreeze,
+  FreezeInventory
 } from '../lib/data';
 import { getSessionId } from '../lib/session';
 
@@ -39,6 +43,9 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
   const [editName, setEditName] = useState('');
   const [selectingTierId, setSelectingTierId] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [freezeInventory, setFreezeInventory] = useState<FreezeInventory | null>(null);
+  const [freezeNotification, setFreezeNotification] = useState<string | null>(null);
+  const [newFreezeAwarded, setNewFreezeAwarded] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<{
     sessionId: string | null;
     protocolId: string | null;
@@ -74,6 +81,19 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
       const habitsData = await fetchHabitsWithCompletions(proto.id);
       setHabits(habitsData);
 
+      // Load freeze inventory
+      const inventory = await getFreezeInventory();
+      setFreezeInventory(inventory);
+
+      // Check if we need to auto-apply a freeze for yesterday
+      const freezeResult = await checkAndAutoApplyFreeze();
+      if (freezeResult.applied && freezeResult.date) {
+        setFreezeNotification(`Streak freeze auto-applied for ${freezeResult.date}! Your streak is protected.`);
+        // Refresh inventory after using a freeze
+        const updatedInventory = await getFreezeInventory();
+        setFreezeInventory(updatedInventory);
+      }
+
       // Capture debug info
       setDebugInfo({
         sessionId,
@@ -102,6 +122,19 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
       setHabits((prev) => prev.map((h) =>
         h.id === habit.id ? { ...h, todayCompletion: completion } : h
       ));
+
+      // Check if this completion triggers a milestone freeze award
+      if (habit.stats) {
+        const newStreak = habit.stats.currentStreak + (habit.todayCompletion ? 0 : 1);
+        const awarded = await checkAndAwardMilestoneFreeze(newStreak);
+        if (awarded) {
+          setNewFreezeAwarded(awarded.milestone);
+          const updatedInventory = await getFreezeInventory();
+          setFreezeInventory(updatedInventory);
+          // Clear notification after 5 seconds
+          setTimeout(() => setNewFreezeAwarded(null), 5000);
+        }
+      }
     }
     setSelectingTierId(null);
   };
@@ -188,7 +221,63 @@ export function ProtocolPanel({ onThemeChange, onSummary }: Props) {
           <div className="bg-accent h-full" style={{ width: `${(protocol.day_number / protocol.total_days) * 100}%` }} />
         </div>
         <p className="text-xs text-gray-400">Day {protocol.day_number} of {protocol.total_days}</p>
+
+        {/* Freeze Inventory */}
+        {freezeInventory && (
+          <div className="flex items-center justify-between pt-2 border-t border-gray-800">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">Streak Freezes</span>
+              <div className="flex gap-1">
+                {Array.from({ length: freezeInventory.maxFreezes }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
+                      i < freezeInventory.available
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500'
+                        : 'bg-gray-800 text-gray-600 border border-gray-700'
+                    }`}
+                  >
+                    ❄
+                  </div>
+                ))}
+              </div>
+            </div>
+            <span className="text-xs text-gray-500">
+              Earn at 7, 14, 21, 30d streaks
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Freeze Notification */}
+      {freezeNotification && (
+        <div className="glow-card p-4 bg-cyan-500/10 border border-cyan-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">❄️</span>
+              <span className="text-sm text-cyan-400">{freezeNotification}</span>
+            </div>
+            <button
+              onClick={() => setFreezeNotification(null)}
+              className="text-gray-400 hover:text-white"
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* New Freeze Awarded */}
+      {newFreezeAwarded && (
+        <div className="glow-card p-4 bg-success/10 border border-success/30">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🎉</span>
+            <span className="text-sm text-success">
+              Streak freeze earned for {newFreezeAwarded}!
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Daily Progress */}
       <div className="glow-card p-5 space-y-3">

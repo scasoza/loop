@@ -52,6 +52,25 @@ export interface Summary {
   bonusCount: number;
 }
 
+// Streak freeze system
+export interface StreakFreeze {
+  id: string;
+  session_id: string;
+  earned_at: string;
+  used_on: string | null; // date string when used, null if available
+  milestone: string; // e.g., "7-day streak"
+}
+
+export interface FreezeInventory {
+  available: number;
+  used: StreakFreeze[];
+  availableFreezes: StreakFreeze[];
+  maxFreezes: number;
+}
+
+const MAX_FREEZES = 3;
+const FREEZE_MILESTONES = [7, 14, 21, 30, 45, 60, 90]; // Days that earn a freeze
+
 function getToday(): string {
   return dayjs().format('YYYY-MM-DD');
 }
@@ -465,6 +484,222 @@ export async function fetchAllHabitStats(habitIds: string[]): Promise<Record<str
   }
 
   return result;
+}
+
+// ============== STREAK FREEZE SYSTEM ==============
+
+// Fetch all freezes for the session
+export async function fetchFreezes(): Promise<StreakFreeze[]> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('streak_freezes')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('earned_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching freezes:', error.message);
+    return [];
+  }
+
+  return (data || []) as StreakFreeze[];
+}
+
+// Get freeze inventory (available and used)
+export async function getFreezeInventory(): Promise<FreezeInventory> {
+  const freezes = await fetchFreezes();
+  const availableFreezes = freezes.filter(f => f.used_on === null);
+  const usedFreezes = freezes.filter(f => f.used_on !== null);
+
+  return {
+    available: availableFreezes.length,
+    used: usedFreezes,
+    availableFreezes,
+    maxFreezes: MAX_FREEZES
+  };
+}
+
+// Check if a freeze was used on a specific date
+export async function wasFreezedUsedOnDate(date: string): Promise<boolean> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return false;
+  }
+
+  const { data } = await supabase
+    .from('streak_freezes')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('used_on', date)
+    .maybeSingle();
+
+  return !!data;
+}
+
+// Get dates where freezes were used (for calendar display)
+export async function getFreezeDates(): Promise<Set<string>> {
+  const freezes = await fetchFreezes();
+  const usedDates = freezes
+    .filter(f => f.used_on !== null)
+    .map(f => f.used_on as string);
+  return new Set(usedDates);
+}
+
+// Award a freeze for reaching a milestone
+export async function awardFreeze(milestone: string): Promise<StreakFreeze | null> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return null;
+  }
+
+  // Check if we already have max freezes available
+  const inventory = await getFreezeInventory();
+  if (inventory.available >= MAX_FREEZES) {
+    console.log('Max freezes reached, not awarding new one');
+    return null;
+  }
+
+  // Check if this milestone was already awarded
+  const { data: existing } = await supabase
+    .from('streak_freezes')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('milestone', milestone)
+    .maybeSingle();
+
+  if (existing) {
+    console.log('Milestone already awarded:', milestone);
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('streak_freezes')
+    .insert({
+      session_id: sessionId,
+      milestone,
+      earned_at: new Date().toISOString(),
+      used_on: null
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error awarding freeze:', error.message);
+    return null;
+  }
+
+  return data as StreakFreeze;
+}
+
+// Apply a freeze for a specific date (usually yesterday when you missed)
+export async function applyFreeze(date: string): Promise<boolean> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return false;
+  }
+
+  // Get an available freeze
+  const inventory = await getFreezeInventory();
+  if (inventory.available === 0) {
+    console.log('No freezes available');
+    return false;
+  }
+
+  // Use the oldest available freeze
+  const freezeToUse = inventory.availableFreezes[inventory.availableFreezes.length - 1];
+
+  const { error } = await supabase
+    .from('streak_freezes')
+    .update({ used_on: date })
+    .eq('id', freezeToUse.id);
+
+  if (error) {
+    console.error('Error using freeze:', error.message);
+    return false;
+  }
+
+  return true;
+}
+
+// Check and auto-apply freeze if needed (called on app load)
+export async function checkAndAutoApplyFreeze(): Promise<{ applied: boolean; date?: string }> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return { applied: false };
+  }
+
+  const today = dayjs();
+  const yesterday = today.subtract(1, 'day').format('YYYY-MM-DD');
+
+  // Check if yesterday had any completions
+  const { data: yesterdayCompletions } = await supabase
+    .from('habit_completions')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('date', yesterday)
+    .limit(1);
+
+  // If there were completions yesterday, no need for freeze
+  if (yesterdayCompletions && yesterdayCompletions.length > 0) {
+    return { applied: false };
+  }
+
+  // Check if a freeze was already used for yesterday
+  const alreadyFrozen = await wasFreezedUsedOnDate(yesterday);
+  if (alreadyFrozen) {
+    return { applied: false };
+  }
+
+  // Check if we have freezes available
+  const inventory = await getFreezeInventory();
+  if (inventory.available === 0) {
+    return { applied: false };
+  }
+
+  // Auto-apply freeze for yesterday
+  const success = await applyFreeze(yesterday);
+  return { applied: success, date: success ? yesterday : undefined };
+}
+
+// Check milestone and award freeze if earned
+export async function checkAndAwardMilestoneFreeze(currentStreak: number): Promise<StreakFreeze | null> {
+  // Check if current streak matches any milestone
+  if (FREEZE_MILESTONES.includes(currentStreak)) {
+    return await awardFreeze(`${currentStreak}-day streak`);
+  }
+  return null;
+}
+
+// Calculate streak accounting for freeze days
+export async function calculateStreakWithFreezes(completionDates: Set<string>): Promise<number> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return 0;
+  }
+
+  const freezeDates = await getFreezeDates();
+  const allActiveDates = new Set([...Array.from(completionDates), ...Array.from(freezeDates)]);
+
+  const today = dayjs();
+  let currentStreak = 0;
+  let checkDate = today;
+
+  // If today isn't completed or frozen, start from yesterday
+  const todayStr = today.format('YYYY-MM-DD');
+  if (!allActiveDates.has(todayStr)) {
+    checkDate = today.subtract(1, 'day');
+  }
+
+  while (allActiveDates.has(checkDate.format('YYYY-MM-DD'))) {
+    currentStreak++;
+    checkDate = checkDate.subtract(1, 'day');
+  }
+
+  return currentStreak;
 }
 
 // Complete a habit for today with a tier
