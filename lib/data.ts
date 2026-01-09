@@ -170,7 +170,7 @@ export async function updateProtocol(partial: Partial<Protocol>): Promise<void> 
     .eq('session_id', sessionId);
 }
 
-// Fetch all habits for this protocol (these persist forever until deleted)
+// Fetch all habits for this session (these persist forever until deleted)
 export async function fetchHabits(protocolId: string): Promise<Habit[]> {
   const sessionId = getSessionId();
 
@@ -181,11 +181,12 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
     return [];
   }
 
+  // Fetch by session_id only - habits belong to the session, not the protocol
+  // This prevents habit loss if the protocol gets recreated
   const { data, error } = await supabase
     .from('habits')
     .select('id, name, protocol_id, reminder_time')
-    .eq('session_id', sessionId)
-    .eq('protocol_id', protocolId);
+    .eq('session_id', sessionId);
 
   console.log('[Loop Debug] fetchHabits result:', { count: data?.length, habits: data?.map(h => h.name), error: error?.message });
 
