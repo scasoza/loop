@@ -95,7 +95,24 @@ function isSupabaseConfigured(): boolean {
   return true;
 }
 
+// Prevent race conditions in protocol creation
+let protocolPromise: Promise<Protocol | null> | null = null;
+
 export async function fetchProtocol(): Promise<Protocol | null> {
+  // If there's already a fetch in progress, wait for it
+  if (protocolPromise) {
+    return protocolPromise;
+  }
+
+  protocolPromise = fetchProtocolInternal();
+  try {
+    return await protocolPromise;
+  } finally {
+    protocolPromise = null;
+  }
+}
+
+async function fetchProtocolInternal(): Promise<Protocol | null> {
   const sessionId = getSessionId();
 
   console.log('[Loop Debug] fetchProtocol called, sessionId:', sessionId);
