@@ -15,7 +15,7 @@ import {
   checkAndAwardMilestoneFreeze
 } from '../lib/data';
 import { useData } from '../lib/DataContext';
-import { getSessionId } from '../lib/session';
+import { getSessionId, setSessionId } from '../lib/session';
 import { formatReminderTime } from '../lib/notifications';
 import {
   isOneSignalAvailable,
@@ -52,6 +52,7 @@ export function ProtocolPanel({ onSummary }: Props) {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [settingReminderId, setSettingReminderId] = useState<string | null>(null);
   const [reminderTimeInput, setReminderTimeInput] = useState('');
+  const [sessionInput, setSessionInput] = useState('');
 
   // Initialize notification permission check
   useEffect(() => {
@@ -80,6 +81,12 @@ export function ProtocolPanel({ onSummary }: Props) {
       onSummary(summary);
     }
   }, [summary, onSummary]);
+
+  useEffect(() => {
+    if (showDebug && !sessionInput) {
+      setSessionInput(sessionId || '');
+    }
+  }, [showDebug, sessionId, sessionInput]);
 
   const handleSelectTier = async (habit: HabitWithCompletion, tier: CompletionTier) => {
     const completion = await completeHabit(habit.id, tier);
@@ -187,6 +194,13 @@ export function ProtocolPanel({ onSummary }: Props) {
     if (notificationPermission === 'granted') {
       await removeHabitReminder(habit.id);
     }
+  };
+
+  const handleApplySessionId = () => {
+    const trimmed = sessionInput.trim();
+    if (!trimmed) return;
+    setSessionId(trimmed);
+    window.location.reload();
   };
 
   if (loading) {
@@ -576,6 +590,25 @@ export function ProtocolPanel({ onSummary }: Props) {
             <p><span className="text-gray-500">Protocol:</span> {protocol?.id || 'null'}</p>
             <p><span className="text-gray-500">Habit Count:</span> {habits.length}</p>
             <p><span className="text-gray-500">Habits:</span> {habits.length > 0 ? habits.map(h => h.name).join(', ') : '(none)'}</p>
+          </div>
+          <div className="pt-2 space-y-1 text-gray-400">
+            <p className="text-gray-500">Load another session id</p>
+            <div className="flex gap-2">
+              <input
+                value={sessionInput}
+                onChange={(e) => setSessionInput(e.target.value)}
+                placeholder="Paste session id..."
+                className="flex-1 bg-panel/60 border border-gray-600/50 rounded-lg px-3 py-2 text-xs text-gray-100 placeholder-gray-500"
+              />
+              <button
+                onClick={handleApplySessionId}
+                disabled={!sessionInput.trim()}
+                className="bg-amber-400 text-black rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 hover:bg-amber-300 transition"
+              >
+                Use
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">Updates local storage and reloads the app.</p>
           </div>
         </div>
       )}
