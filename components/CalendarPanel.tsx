@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Summary, DayStats, fetchCompletionsForDateRange } from '../lib/data';
+import { Summary, DayStats, fetchCompletionsForDateRange, getFreezeDates } from '../lib/data';
 import { CheckCircleIcon, FireIcon } from '@heroicons/react/24/solid';
 
 interface Props {
@@ -13,15 +13,20 @@ interface DayInfo {
   isToday: boolean;
   isCurrentMonth: boolean;
   stats?: DayStats;
+  isFrozen: boolean;
 }
 
-function buildMonth(reference = dayjs(), stats: Record<string, DayStats> = {}): DayInfo[] {
+function buildMonth(
+  reference = dayjs(),
+  stats: Record<string, DayStats> = {},
+  freezeDates: Set<string> = new Set()
+): DayInfo[] {
   const start = reference.startOf('month');
   const firstDayOfWeek = start.day();
   const days: DayInfo[] = [];
 
   for (let i = 0; i < firstDayOfWeek; i++) {
-    days.push({ label: '', dateStr: '', isToday: false, isCurrentMonth: false });
+    days.push({ label: '', dateStr: '', isToday: false, isCurrentMonth: false, isFrozen: false });
   }
 
   for (let i = 0; i < reference.daysInMonth(); i += 1) {
@@ -32,7 +37,8 @@ function buildMonth(reference = dayjs(), stats: Record<string, DayStats> = {}): 
       dateStr,
       isToday: date.isSame(dayjs(), 'day'),
       isCurrentMonth: true,
-      stats: stats[dateStr]
+      stats: stats[dateStr],
+      isFrozen: freezeDates.has(dateStr)
     });
   }
   return days;
@@ -64,6 +70,7 @@ function getCompletionColor(stats?: DayStats): string {
 
 export function CalendarPanel({ summary }: Props) {
   const [monthStats, setMonthStats] = useState<Record<string, DayStats>>({});
+  const [freezeDates, setFreezeDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -71,14 +78,18 @@ export function CalendarPanel({ summary }: Props) {
       setLoading(true);
       const startOfMonth = dayjs().startOf('month').format('YYYY-MM-DD');
       const endOfMonth = dayjs().endOf('month').format('YYYY-MM-DD');
-      const stats = await fetchCompletionsForDateRange(startOfMonth, endOfMonth);
+      const [stats, freezes] = await Promise.all([
+        fetchCompletionsForDateRange(startOfMonth, endOfMonth),
+        getFreezeDates()
+      ]);
       setMonthStats(stats);
+      setFreezeDates(freezes);
       setLoading(false);
     };
     loadStats();
   }, []);
 
-  const days = useMemo(() => buildMonth(dayjs(), monthStats), [monthStats]);
+  const days = useMemo(() => buildMonth(dayjs(), monthStats, freezeDates), [monthStats, freezeDates]);
   const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   const completionRate = summary.habitCount > 0
@@ -113,15 +124,30 @@ export function CalendarPanel({ summary }: Props) {
                 className={`aspect-square rounded-lg flex flex-col items-center justify-center text-sm relative overflow-hidden ${
                   day.isToday
                     ? 'bg-accent text-black font-bold'
+                    : day.isFrozen
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
                     : day.isCurrentMonth
                     ? `bg-panel text-gray-200 ${getCompletionColor(day.stats)}`
                     : 'bg-transparent'
                 }`}
-                title={day.stats ? `${day.stats.completedCount}/${day.stats.totalHabits} completed (${completionRate}%)` : ''}
+                title={
+                  day.isFrozen
+                    ? 'Streak freeze used'
+                    : day.stats
+                    ? `${day.stats.completedCount}/${day.stats.totalHabits} completed (${completionRate}%)`
+                    : ''
+                }
               >
-                <span>{day.label}</span>
+                {day.isFrozen && !day.isToday ? (
+                  <>
+                    <span className="text-xs">❄️</span>
+                    <span className="text-[10px]">{day.label}</span>
+                  </>
+                ) : (
+                  <span>{day.label}</span>
+                )}
                 {/* Progress bar at bottom */}
-                {day.isCurrentMonth && day.stats && day.stats.completedCount > 0 && !day.isToday && (
+                {day.isCurrentMonth && day.stats && day.stats.completedCount > 0 && !day.isToday && !day.isFrozen && (
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
                     <div
                       className="h-full bg-success transition-all"
@@ -130,7 +156,7 @@ export function CalendarPanel({ summary }: Props) {
                   </div>
                 )}
                 {/* Show fraction for days with data */}
-                {day.stats && day.stats.completedCount > 0 && !day.isToday && (
+                {day.stats && day.stats.completedCount > 0 && !day.isToday && !day.isFrozen && (
                   <span className="text-[8px] text-gray-400 -mt-0.5">
                     {day.stats.completedCount}/{day.stats.totalHabits}
                   </span>
@@ -141,7 +167,7 @@ export function CalendarPanel({ summary }: Props) {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center justify-center gap-3 text-xs text-gray-400 pt-2">
+        <div className="flex items-center justify-center gap-3 text-xs text-gray-400 pt-2 flex-wrap">
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded bg-blue-400/30 border border-blue-400/50" />
             <span>Floor</span>
@@ -153,6 +179,10 @@ export function CalendarPanel({ summary }: Props) {
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded bg-amber-500/30 border border-amber-500/50" />
             <span>Bonus</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-cyan-500/20 border border-cyan-500/50" />
+            <span>Freeze</span>
           </div>
         </div>
       </div>
