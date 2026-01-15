@@ -78,8 +78,8 @@ function getToday(): string {
 
 // Check if we can use Supabase
 function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
 
   if (!url || !key) {
     console.warn('Supabase not configured: missing env vars');
@@ -212,7 +212,32 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
     return [];
   }
 
-  return (data || []) as Habit[];
+  if (data && data.length > 0) {
+    return data as Habit[];
+  }
+
+  if (!protocolId) {
+    return [];
+  }
+
+  // Fallback: some rows may have mismatched session ids but correct protocol_id
+  const { data: protocolHabits, error: protocolError } = await supabase
+    .from('habits')
+    .select('id, name, protocol_id, reminder_time')
+    .eq('protocol_id', protocolId);
+
+  console.log('[Loop Debug] fetchHabits fallback by protocol:', {
+    count: protocolHabits?.length,
+    habits: protocolHabits?.map(h => h.name),
+    error: protocolError?.message
+  });
+
+  if (protocolError) {
+    console.error('[Loop Debug] Error fetching habits by protocol:', protocolError.message);
+    return [];
+  }
+
+  return (protocolHabits || []) as Habit[];
 }
 
 // Fetch today's completions for given habits

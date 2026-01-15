@@ -48,3 +48,9 @@ export function clearSession() {
   const storage = getStorage();
   storage?.removeItem(STORAGE_KEY);
 }
+
+export function setSessionId(sessionId: string): void {
+  const storage = getStorage();
+  if (!storage) return;
+  storage.setItem(STORAGE_KEY, sessionId);
+}
