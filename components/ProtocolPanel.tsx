@@ -26,6 +26,7 @@ import {
   removeHabitReminder
 } from '../lib/onesignal';
 import { ProtocolSkeleton } from './Skeleton';
+import { ProgressionBuilder } from './ProgressionBuilder';
 
 interface Props {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
@@ -53,7 +54,6 @@ export function ProtocolPanel({ onSummary }: Props) {
   const [settingReminderId, setSettingReminderId] = useState<string | null>(null);
   const [reminderTimeInput, setReminderTimeInput] = useState('');
   const [sessionInput, setSessionInput] = useState('');
-
   // Initialize notification permission check
   useEffect(() => {
     const checkNotifications = async () => {
@@ -401,9 +401,9 @@ export function ProtocolPanel({ onSummary }: Props) {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className={`font-medium ${habit.todayCompletion ? 'text-gray-100' : 'text-gray-200'}`}>
-                              {habit.name}
-                            </span>
+                              <span className={`font-medium ${habit.todayCompletion ? 'text-gray-100' : 'text-gray-200'}`}>
+                                {habit.displayName || habit.name}
+                              </span>
                             {habit.todayCompletion && (
                               <span className={`text-xs font-medium ${tierConfig[habit.todayCompletion.tier].color}`}>
                                 {tierConfig[habit.todayCompletion.tier].label}
@@ -552,6 +552,10 @@ export function ProtocolPanel({ onSummary }: Props) {
               <PlusCircleIcon className="h-5 w-5" />
             </button>
           </div>
+          <ProgressionBuilder
+            protocolId={protocol.id}
+            onCreated={(created) => setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }])}
+          />
         </div>
       </div>
 

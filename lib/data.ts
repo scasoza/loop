@@ -21,6 +21,8 @@ export interface Habit {
   id: string;
   name: string;
   protocol_id: string;
+  progression_id?: string | null;
+  created_at?: string;
   archived?: boolean;
   reminder_time?: string; // HH:MM format, null means no reminder
 }
@@ -43,6 +45,8 @@ export interface HabitStats {
 export interface HabitWithCompletion extends Habit {
   todayCompletion?: HabitCompletion;
   stats?: HabitStats;
+  displayName?: string;
+  currentStep?: HabitProgressionStep | null;
 }
 
 export interface Summary {
@@ -67,6 +71,21 @@ export interface FreezeInventory {
   used: StreakFreeze[];
   availableFreezes: StreakFreeze[];
   maxFreezes: number;
+}
+
+export interface HabitProgression {
+  id: string;
+  session_id: string;
+  name: string;
+  created_at?: string;
+}
+
+export interface HabitProgressionStep {
+  id: string;
+  progression_id: string;
+  name: string;
+  duration_days: number;
+  step_order: number;
 }
 
 const MAX_FREEZES = 3;
@@ -202,7 +221,7 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
   // This prevents habit loss if the protocol gets recreated
   const { data, error } = await supabase
     .from('habits')
-    .select('id, name, protocol_id, reminder_time')
+    .select('id, name, protocol_id, reminder_time, progression_id, created_at')
     .eq('session_id', sessionId);
 
   console.log('[Loop Debug] fetchHabits result:', { count: data?.length, habits: data?.map(h => h.name), error: error?.message });
@@ -223,7 +242,7 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
   // Fallback: some rows may have mismatched session ids but correct protocol_id
   const { data: protocolHabits, error: protocolError } = await supabase
     .from('habits')
-    .select('id, name, protocol_id, reminder_time')
+    .select('id, name, protocol_id, reminder_time, progression_id, created_at')
     .eq('protocol_id', protocolId);
 
   console.log('[Loop Debug] fetchHabits fallback by protocol:', {
@@ -238,6 +257,54 @@ export async function fetchHabits(protocolId: string): Promise<Habit[]> {
   }
 
   return (protocolHabits || []) as Habit[];
+}
+
+function resolveProgressionStep(
+  steps: HabitProgressionStep[],
+  startDate: string
+): HabitProgressionStep | null {
+  if (steps.length === 0) return null;
+  const dayIndex = dayjs().diff(dayjs(startDate), 'day');
+  if (dayIndex < 0) return steps[0];
+  let offset = 0;
+  for (const step of steps) {
+    const duration = Math.max(step.duration_days, 1);
+    if (dayIndex < offset + duration) {
+      return step;
+    }
+    offset += duration;
+  }
+  return steps[steps.length - 1];
+}
+
+async function fetchProgressionSteps(
+  progressionIds: string[]
+): Promise<Record<string, HabitProgressionStep[]>> {
+  if (!isSupabaseConfigured() || progressionIds.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from('habit_progression_steps')
+    .select('id, progression_id, name, duration_days, step_order')
+    .in('progression_id', progressionIds)
+    .order('step_order', { ascending: true });
+
+  if (error || !data) {
+    console.error('[Loop Debug] Error fetching progression steps:', error?.message);
+    return {};
+  }
+
+  const stepsByProgression: Record<string, HabitProgressionStep[]> = {};
+  progressionIds.forEach(id => { stepsByProgression[id] = []; });
+  data.forEach((step: HabitProgressionStep) => {
+    if (!stepsByProgression[step.progression_id]) {
+      stepsByProgression[step.progression_id] = [];
+    }
+    stepsByProgression[step.progression_id].push(step);
+  });
+
+  return stepsByProgression;
 }
 
 // Fetch today's completions for given habits
@@ -276,16 +343,28 @@ export async function fetchHabitsWithCompletions(protocolId: string): Promise<Ha
   }
 
   const habitIds = habits.map(h => h.id);
+  const progressionIds = habits
+    .map(h => h.progression_id)
+    .filter((id): id is string => !!id);
   const [completions, stats] = await Promise.all([
     fetchTodayCompletions(habitIds),
     fetchAllHabitStats(habitIds)
   ]);
+  const progressionSteps = await fetchProgressionSteps(progressionIds);
 
-  return habits.map(h => ({
-    ...h,
-    todayCompletion: completions[h.id],
-    stats: stats[h.id]
-  }));
+  return habits.map(h => {
+    const steps = h.progression_id ? progressionSteps[h.progression_id] || [] : [];
+    const step = h.progression_id
+      ? resolveProgressionStep(steps, h.created_at || dayjs().toISOString())
+      : null;
+    return {
+      ...h,
+      todayCompletion: completions[h.id],
+      stats: stats[h.id],
+      currentStep: step,
+      displayName: step ? `${h.name}: ${step.name}` : h.name
+    };
+  });
 }
 
 // Fetch completions for a date range (for calendar view)
@@ -811,6 +890,65 @@ export async function uncompleteHabit(habitId: string): Promise<void> {
     .eq('session_id', sessionId)
     .eq('habit_id', habitId)
     .eq('date', today);
+}
+
+export async function createProgressionHabit(input: {
+  name: string;
+  protocolId: string;
+  steps: Array<{ name: string; durationDays: number }>;
+}): Promise<Habit | null> {
+  const sessionId = getSessionId();
+  if (!isSupabaseConfigured() || !sessionId) {
+    return null;
+  }
+
+  const { data: progression, error: progressionError } = await supabase
+    .from('habit_progressions')
+    .insert({
+      session_id: sessionId,
+      name: input.name
+    })
+    .select()
+    .single();
+
+  if (progressionError || !progression) {
+    console.error('Error creating progression:', progressionError?.message);
+    return null;
+  }
+
+  const stepsPayload = input.steps.map((step, index) => ({
+    progression_id: progression.id,
+    name: step.name,
+    duration_days: step.durationDays,
+    step_order: index + 1
+  }));
+
+  const { error: stepsError } = await supabase
+    .from('habit_progression_steps')
+    .insert(stepsPayload);
+
+  if (stepsError) {
+    console.error('Error creating progression steps:', stepsError.message);
+    return null;
+  }
+
+  const { data: habit, error: habitError } = await supabase
+    .from('habits')
+    .insert({
+      session_id: sessionId,
+      protocol_id: input.protocolId,
+      name: input.name,
+      progression_id: progression.id
+    })
+    .select()
+    .single();
+
+  if (habitError) {
+    console.error('Error creating progression habit:', habitError.message);
+    return null;
+  }
+
+  return habit as Habit;
 }
 
 // Add new habit (persists until deleted)

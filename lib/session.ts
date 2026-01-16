@@ -16,6 +16,10 @@ function getSessionIdOverride(): string | null {
   return params.get('session') || params.get('sessionId') || params.get('sid');
 }
 
+function getDefaultSessionId(): string | null {
+  return process.env.NEXT_PUBLIC_DEFAULT_SESSION_ID ?? null;
+}
+
 function getLegacySessionId(storage: StorageInterface): string | null {
   for (const key of LEGACY_STORAGE_KEYS) {
     const legacyId = storage.getItem(key);
@@ -31,6 +35,11 @@ export function getSessionId(): string | null {
   if (override) {
     storage.setItem(STORAGE_KEY, override);
     return override;
+  }
+  const defaultSession = getDefaultSessionId();
+  if (defaultSession) {
+    storage.setItem(STORAGE_KEY, defaultSession);
+    return defaultSession;
   }
   const existing = storage.getItem(STORAGE_KEY);
   if (existing) return existing;
