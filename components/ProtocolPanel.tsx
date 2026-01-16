@@ -6,6 +6,7 @@ import {
   completeHabit,
   uncompleteHabit,
   addHabit,
+  createProgressionHabit,
   updateHabit,
   deleteHabit,
   setHabitReminder,
@@ -15,7 +16,7 @@ import {
   checkAndAwardMilestoneFreeze
 } from '../lib/data';
 import { useData } from '../lib/DataContext';
-import { getSessionId } from '../lib/session';
+import { getSessionId, setSessionId } from '../lib/session';
 import { formatReminderTime } from '../lib/notifications';
 import {
   isOneSignalAvailable,
@@ -52,6 +53,10 @@ export function ProtocolPanel({ onSummary }: Props) {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [settingReminderId, setSettingReminderId] = useState<string | null>(null);
   const [reminderTimeInput, setReminderTimeInput] = useState('');
+  const [sessionInput, setSessionInput] = useState('');
+  const [showProgressionForm, setShowProgressionForm] = useState(false);
+  const [progressionName, setProgressionName] = useState('');
+  const [progressionSteps, setProgressionSteps] = useState('5: Do X\n5: Do Y');
 
   // Initialize notification permission check
   useEffect(() => {
@@ -80,6 +85,12 @@ export function ProtocolPanel({ onSummary }: Props) {
       onSummary(summary);
     }
   }, [summary, onSummary]);
+
+  useEffect(() => {
+    if (showDebug && !sessionInput) {
+      setSessionInput(sessionId || '');
+    }
+  }, [showDebug, sessionId, sessionInput]);
 
   const handleSelectTier = async (habit: HabitWithCompletion, tier: CompletionTier) => {
     const completion = await completeHabit(habit.id, tier);
@@ -117,6 +128,37 @@ export function ProtocolPanel({ onSummary }: Props) {
     if (created) {
       setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
       setNewHabit('');
+    }
+  };
+
+  const handleAddProgression = async () => {
+    if (!protocol || !progressionName.trim()) return;
+    const steps = progressionSteps
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^(\d+)\s*[:\-]\s*(.+)$/);
+        if (match) {
+          return { durationDays: Number(match[1]), name: match[2].trim() };
+        }
+        return { durationDays: 1, name: line };
+      })
+      .filter(step => step.name.length > 0 && step.durationDays > 0);
+
+    if (steps.length === 0) return;
+
+    const created = await createProgressionHabit({
+      name: progressionName.trim(),
+      protocolId: protocol.id,
+      steps
+    });
+
+    if (created) {
+      setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
+      setProgressionName('');
+      setProgressionSteps('5: Do X\n5: Do Y');
+      setShowProgressionForm(false);
     }
   };
 
@@ -187,6 +229,13 @@ export function ProtocolPanel({ onSummary }: Props) {
     if (notificationPermission === 'granted') {
       await removeHabitReminder(habit.id);
     }
+  };
+
+  const handleApplySessionId = () => {
+    const trimmed = sessionInput.trim();
+    if (!trimmed) return;
+    setSessionId(trimmed);
+    window.location.reload();
   };
 
   if (loading) {
@@ -387,9 +436,9 @@ export function ProtocolPanel({ onSummary }: Props) {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className={`font-medium ${habit.todayCompletion ? 'text-gray-100' : 'text-gray-200'}`}>
-                              {habit.name}
-                            </span>
+                              <span className={`font-medium ${habit.todayCompletion ? 'text-gray-100' : 'text-gray-200'}`}>
+                                {habit.displayName || habit.name}
+                              </span>
                             {habit.todayCompletion && (
                               <span className={`text-xs font-medium ${tierConfig[habit.todayCompletion.tier].color}`}>
                                 {tierConfig[habit.todayCompletion.tier].label}
@@ -538,6 +587,41 @@ export function ProtocolPanel({ onSummary }: Props) {
               <PlusCircleIcon className="h-5 w-5" />
             </button>
           </div>
+          <button
+            onClick={() => setShowProgressionForm((prev) => !prev)}
+            className="mt-3 text-xs text-gray-400 hover:text-gray-200"
+          >
+            {showProgressionForm ? 'Hide progression builder' : 'Add a progression habit'}
+          </button>
+          {showProgressionForm && (
+            <div className="mt-3 space-y-2 rounded-xl border border-gray-700/60 bg-panel/40 p-3">
+              <input
+                value={progressionName}
+                onChange={(e) => setProgressionName(e.target.value)}
+                placeholder="Progression name (e.g., Diet reboot)"
+                className="w-full bg-panel/60 border border-gray-600/50 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500"
+              />
+              <textarea
+                value={progressionSteps}
+                onChange={(e) => setProgressionSteps(e.target.value)}
+                rows={4}
+                placeholder="5: Eat whole foods\n5: Add protein\n5: Add fiber"
+                className="w-full bg-panel/60 border border-gray-600/50 rounded-lg px-3 py-2 text-xs text-gray-100 placeholder-gray-500"
+              />
+              <p className="text-[11px] text-gray-500">
+                Format: one step per line, &quot;days: instruction&quot;. If no days provided, defaults to 1 day.
+              </p>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleAddProgression}
+                  disabled={!progressionName.trim()}
+                  className="bg-amber-400 text-black rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 hover:bg-amber-300 transition"
+                >
+                  Create progression
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -576,6 +660,25 @@ export function ProtocolPanel({ onSummary }: Props) {
             <p><span className="text-gray-500">Protocol:</span> {protocol?.id || 'null'}</p>
             <p><span className="text-gray-500">Habit Count:</span> {habits.length}</p>
             <p><span className="text-gray-500">Habits:</span> {habits.length > 0 ? habits.map(h => h.name).join(', ') : '(none)'}</p>
+          </div>
+          <div className="pt-2 space-y-1 text-gray-400">
+            <p className="text-gray-500">Load another session id</p>
+            <div className="flex gap-2">
+              <input
+                value={sessionInput}
+                onChange={(e) => setSessionInput(e.target.value)}
+                placeholder="Paste session id..."
+                className="flex-1 bg-panel/60 border border-gray-600/50 rounded-lg px-3 py-2 text-xs text-gray-100 placeholder-gray-500"
+              />
+              <button
+                onClick={handleApplySessionId}
+                disabled={!sessionInput.trim()}
+                className="bg-amber-400 text-black rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 hover:bg-amber-300 transition"
+              >
+                Use
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">Updates local storage and reloads the app.</p>
           </div>
         </div>
       )}
