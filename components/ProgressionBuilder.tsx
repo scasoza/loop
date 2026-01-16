@@ -3,7 +3,7 @@ import { createProgressionHabit, Habit } from '../lib/data';
 
 interface ProgressionBuilderProps {
   protocolId: string;
-  onCreated: (habit: Habit) => void;
+  onCreated?: (habit: Habit) => void | Promise<void>;
 }
 
 export function ProgressionBuilder({ protocolId, onCreated }: ProgressionBuilderProps) {
@@ -35,7 +35,9 @@ export function ProgressionBuilder({ protocolId, onCreated }: ProgressionBuilder
     });
 
     if (created) {
-      onCreated(created);
+      if (onCreated) {
+        await onCreated(created);
+      }
       setProgressionName('');
       setProgressionSteps('5: Do X\n5: Do Y');
       setShowProgressionForm(false);

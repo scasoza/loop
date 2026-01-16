@@ -191,6 +191,14 @@ button:disabled {
   color: var(--text-primary);
 }
 
+:root.light .text-gray-100 {
+  color: var(--text-primary);
+}
+
+:root.light .text-gray-200 {
+  color: var(--text-secondary);
+}
+
 :root.light .text-gray-300 {
   color: var(--text-primary);
 }
@@ -207,8 +215,52 @@ button:disabled {
   color: var(--text-muted);
 }
 
+:root.light .placeholder-gray-500::placeholder {
+  color: var(--text-muted);
+}
+
 :root.light .bg-panel {
   background-color: var(--bg-panel);
+}
+
+:root.light .bg-panel\/30 {
+  background-color: rgba(239, 233, 222, 0.6);
+}
+
+:root.light .bg-panel\/40 {
+  background-color: rgba(239, 233, 222, 0.7);
+}
+
+:root.light .bg-panel\/60 {
+  background-color: rgba(239, 233, 222, 0.85);
+}
+
+:root.light .bg-panel\/80 {
+  background-color: rgba(239, 233, 222, 0.95);
+}
+
+:root.light .bg-surface {
+  background-color: #f3eee6;
+}
+
+:root.light .bg-surface\/50 {
+  background-color: rgba(243, 238, 230, 0.7);
+}
+
+:root.light .border-gray-500\/50 {
+  border-color: rgba(90, 70, 120, 0.2);
+}
+
+:root.light .border-gray-600\/50 {
+  border-color: rgba(90, 70, 120, 0.25);
+}
+
+:root.light .border-gray-700\/50 {
+  border-color: rgba(90, 70, 120, 0.2);
+}
+
+:root.light .border-gray-700\/30 {
+  border-color: rgba(90, 70, 120, 0.12);
 }
 
 :root.light .bg-midnight {

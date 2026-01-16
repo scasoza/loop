@@ -41,7 +41,7 @@ const tierConfig: Record<CompletionTier, { label: string; color: string; bgColor
 
 export function ProtocolPanel({ onSummary }: Props) {
   // Use shared data context - no more re-fetching on tab switch!
-  const { protocol, habits, summary, freezeInventory, loading, error, setHabits, setFreezeInventory, sessionId } = useData();
+  const { protocol, habits, summary, freezeInventory, loading, error, setHabits, setFreezeInventory, sessionId, refreshHabits } = useData();
 
   const [newHabit, setNewHabit] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -554,7 +554,10 @@ export function ProtocolPanel({ onSummary }: Props) {
           </div>
           <ProgressionBuilder
             protocolId={protocol.id}
-            onCreated={(created) => setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }])}
+            onCreated={async (created) => {
+              setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
+              await refreshHabits();
+            }}
           />
         </div>
       </div>
