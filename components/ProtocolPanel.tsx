@@ -15,7 +15,7 @@ import {
   checkAndAwardMilestoneFreeze
 } from '../lib/data';
 import { useData } from '../lib/DataContext';
-import { getSessionId } from '../lib/session';
+import { getSessionId, setSessionId } from '../lib/session';
 import { formatReminderTime } from '../lib/notifications';
 import {
   isOneSignalAvailable,
@@ -26,6 +26,7 @@ import {
   removeHabitReminder
 } from '../lib/onesignal';
 import { ProtocolSkeleton } from './Skeleton';
+import { ProgressionBuilder } from './ProgressionBuilder';
 
 interface Props {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
@@ -40,7 +41,7 @@ const tierConfig: Record<CompletionTier, { label: string; color: string; bgColor
 
 export function ProtocolPanel({ onSummary }: Props) {
   // Use shared data context - no more re-fetching on tab switch!
-  const { protocol, habits, summary, freezeInventory, loading, error, setHabits, setFreezeInventory, sessionId } = useData();
+  const { protocol, habits, summary, freezeInventory, loading, error, setHabits, setFreezeInventory, sessionId, refreshHabits } = useData();
 
   const [newHabit, setNewHabit] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export function ProtocolPanel({ onSummary }: Props) {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [settingReminderId, setSettingReminderId] = useState<string | null>(null);
   const [reminderTimeInput, setReminderTimeInput] = useState('');
-
+  const [sessionInput, setSessionInput] = useState('');
   // Initialize notification permission check
   useEffect(() => {
     const checkNotifications = async () => {
@@ -80,6 +81,12 @@ export function ProtocolPanel({ onSummary }: Props) {
       onSummary(summary);
     }
   }, [summary, onSummary]);
+
+  useEffect(() => {
+    if (showDebug && !sessionInput) {
+      setSessionInput(sessionId || '');
+    }
+  }, [showDebug, sessionId, sessionInput]);
 
   const handleSelectTier = async (habit: HabitWithCompletion, tier: CompletionTier) => {
     const completion = await completeHabit(habit.id, tier);
@@ -187,6 +194,13 @@ export function ProtocolPanel({ onSummary }: Props) {
     if (notificationPermission === 'granted') {
       await removeHabitReminder(habit.id);
     }
+  };
+
+  const handleApplySessionId = () => {
+    const trimmed = sessionInput.trim();
+    if (!trimmed) return;
+    setSessionId(trimmed);
+    window.location.reload();
   };
 
   if (loading) {
@@ -387,9 +401,9 @@ export function ProtocolPanel({ onSummary }: Props) {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className={`font-medium ${habit.todayCompletion ? 'text-gray-100' : 'text-gray-200'}`}>
-                              {habit.name}
-                            </span>
+                              <span className={`font-medium ${habit.todayCompletion ? 'text-gray-100' : 'text-gray-200'}`}>
+                                {habit.displayName || habit.name}
+                              </span>
                             {habit.todayCompletion && (
                               <span className={`text-xs font-medium ${tierConfig[habit.todayCompletion.tier].color}`}>
                                 {tierConfig[habit.todayCompletion.tier].label}
@@ -538,6 +552,13 @@ export function ProtocolPanel({ onSummary }: Props) {
               <PlusCircleIcon className="h-5 w-5" />
             </button>
           </div>
+          <ProgressionBuilder
+            protocolId={protocol.id}
+            onCreated={async (created) => {
+              setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
+              await refreshHabits();
+            }}
+          />
         </div>
       </div>
 
@@ -576,6 +597,25 @@ export function ProtocolPanel({ onSummary }: Props) {
             <p><span className="text-gray-500">Protocol:</span> {protocol?.id || 'null'}</p>
             <p><span className="text-gray-500">Habit Count:</span> {habits.length}</p>
             <p><span className="text-gray-500">Habits:</span> {habits.length > 0 ? habits.map(h => h.name).join(', ') : '(none)'}</p>
+          </div>
+          <div className="pt-2 space-y-1 text-gray-400">
+            <p className="text-gray-500">Load another session id</p>
+            <div className="flex gap-2">
+              <input
+                value={sessionInput}
+                onChange={(e) => setSessionInput(e.target.value)}
+                placeholder="Paste session id..."
+                className="flex-1 bg-panel/60 border border-gray-600/50 rounded-lg px-3 py-2 text-xs text-gray-100 placeholder-gray-500"
+              />
+              <button
+                onClick={handleApplySessionId}
+                disabled={!sessionInput.trim()}
+                className="bg-amber-400 text-black rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 hover:bg-amber-300 transition"
+              >
+                Use
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">Updates local storage and reloads the app.</p>
           </div>
         </div>
       )}
