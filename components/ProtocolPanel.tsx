@@ -6,7 +6,6 @@ import {
   completeHabit,
   uncompleteHabit,
   addHabit,
-  createProgressionHabit,
   updateHabit,
   deleteHabit,
   setHabitReminder,
@@ -27,6 +26,7 @@ import {
   removeHabitReminder
 } from '../lib/onesignal';
 import { ProtocolSkeleton } from './Skeleton';
+import { ProgressionBuilder } from './ProgressionBuilder';
 
 interface Props {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
@@ -54,10 +54,6 @@ export function ProtocolPanel({ onSummary }: Props) {
   const [settingReminderId, setSettingReminderId] = useState<string | null>(null);
   const [reminderTimeInput, setReminderTimeInput] = useState('');
   const [sessionInput, setSessionInput] = useState('');
-  const [showProgressionForm, setShowProgressionForm] = useState(false);
-  const [progressionName, setProgressionName] = useState('');
-  const [progressionSteps, setProgressionSteps] = useState('5: Do X\n5: Do Y');
-
   // Initialize notification permission check
   useEffect(() => {
     const checkNotifications = async () => {
@@ -128,37 +124,6 @@ export function ProtocolPanel({ onSummary }: Props) {
     if (created) {
       setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
       setNewHabit('');
-    }
-  };
-
-  const handleAddProgression = async () => {
-    if (!protocol || !progressionName.trim()) return;
-    const steps = progressionSteps
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const match = line.match(/^(\d+)\s*[:\-]\s*(.+)$/);
-        if (match) {
-          return { durationDays: Number(match[1]), name: match[2].trim() };
-        }
-        return { durationDays: 1, name: line };
-      })
-      .filter(step => step.name.length > 0 && step.durationDays > 0);
-
-    if (steps.length === 0) return;
-
-    const created = await createProgressionHabit({
-      name: progressionName.trim(),
-      protocolId: protocol.id,
-      steps
-    });
-
-    if (created) {
-      setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }]);
-      setProgressionName('');
-      setProgressionSteps('5: Do X\n5: Do Y');
-      setShowProgressionForm(false);
     }
   };
 
@@ -587,41 +552,10 @@ export function ProtocolPanel({ onSummary }: Props) {
               <PlusCircleIcon className="h-5 w-5" />
             </button>
           </div>
-          <button
-            onClick={() => setShowProgressionForm((prev) => !prev)}
-            className="mt-3 text-xs text-gray-400 hover:text-gray-200"
-          >
-            {showProgressionForm ? 'Hide progression builder' : 'Add a progression habit'}
-          </button>
-          {showProgressionForm && (
-            <div className="mt-3 space-y-2 rounded-xl border border-gray-700/60 bg-panel/40 p-3">
-              <input
-                value={progressionName}
-                onChange={(e) => setProgressionName(e.target.value)}
-                placeholder="Progression name (e.g., Diet reboot)"
-                className="w-full bg-panel/60 border border-gray-600/50 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500"
-              />
-              <textarea
-                value={progressionSteps}
-                onChange={(e) => setProgressionSteps(e.target.value)}
-                rows={4}
-                placeholder="5: Eat whole foods\n5: Add protein\n5: Add fiber"
-                className="w-full bg-panel/60 border border-gray-600/50 rounded-lg px-3 py-2 text-xs text-gray-100 placeholder-gray-500"
-              />
-              <p className="text-[11px] text-gray-500">
-                Format: one step per line, &quot;days: instruction&quot;. If no days provided, defaults to 1 day.
-              </p>
-              <div className="flex justify-end">
-                <button
-                  onClick={handleAddProgression}
-                  disabled={!progressionName.trim()}
-                  className="bg-amber-400 text-black rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 hover:bg-amber-300 transition"
-                >
-                  Create progression
-                </button>
-              </div>
-            </div>
-          )}
+          <ProgressionBuilder
+            protocolId={protocol.id}
+            onCreated={(created) => setHabits((prev) => [...prev, { ...created, todayCompletion: undefined }])}
+          />
         </div>
       </div>
 
